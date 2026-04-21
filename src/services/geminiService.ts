@@ -1,29 +1,28 @@
-function callGemini(prompt: string): string {
-  const apiKey = getScriptProperty(PROP_KEYS.GEMINI_API_KEY);
-  const url = `${GEMINI_API_BASE}?key=${apiKey}`;
+function callOpenAI(prompt: string): string {
+  const apiKey = getScriptProperty(PROP_KEYS.OPENAI_API_KEY);
 
   const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 2048,
-    },
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.7,
+    max_tokens: 2048,
   };
 
-  const response = UrlFetchApp.fetch(url, {
+  const response = UrlFetchApp.fetch(OPENAI_API_BASE, {
     method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
     contentType: 'application/json',
+    headers: { Authorization: `Bearer ${apiKey}` },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   });
 
   if (response.getResponseCode() !== 200) {
-    throw new Error(`Gemini API error ${response.getResponseCode()}: ${response.getContentText()}`);
+    throw new Error(`OpenAI API error ${response.getResponseCode()}: ${response.getContentText()}`);
   }
 
   const json = JSON.parse(response.getContentText());
-  const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
+  const text = json.choices?.[0]?.message?.content;
+  if (!text) throw new Error('Empty response from OpenAI');
   return text;
 }
 
@@ -55,7 +54,7 @@ ${newsContext}
 
 function analyzeStockWithNews(ticker: string, newsItems: NewsItem[]): string {
   const prompt = buildNewsAnalysisPrompt(ticker, newsItems);
-  return retryWithBackoff(() => callGemini(prompt), 2, 5000);
+  return retryWithBackoff(() => callOpenAI(prompt), 2, 5000);
 }
 
 function handleChatQuery(userMessage: string): string {
@@ -64,5 +63,5 @@ function handleChatQuery(userMessage: string): string {
 
 使用者問題：${userMessage}`;
 
-  return retryWithBackoff(() => callGemini(prompt), 2, 5000);
+  return retryWithBackoff(() => callOpenAI(prompt), 2, 5000);
 }

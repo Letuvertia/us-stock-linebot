@@ -35,7 +35,7 @@ function executeNewsAnalysis(): void {
     sendPushMessage(message);
     analyzed++;
 
-    sleep(GEMINI_DELAY_MS);
+    sleep(OPENAI_DELAY_MS);
   }
 
   const summary = `\n═══════════════════\n✅ 分析完成：共 ${analyzed}/${watchlist.length} 檔個股`;
