@@ -42,6 +42,8 @@ def extract_keyword(name: str) -> str:
             break
         result = cleaned
     result = result.rstrip('&').strip()
+    if result.endswith('.com'):
+        result = result[:-4]
     if len(result) <= 1:
         return ''
     return result

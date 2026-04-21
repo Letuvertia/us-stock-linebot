@@ -157,16 +157,39 @@ function _ratingLabel(score: number): string {
   return '-';
 }
 
+const ROADS = [
+  '忠孝東路', '敦化南路', '中山北路', '仁愛路', '信義路',
+  '和平東路', '羅斯福路', '南京東路', '民權西路', '重慶南路',
+  '基隆路', '復興南路', '承德路', '林森北路', '光復南路',
+  '建國北路', '辛亥路', '迪化街', '青田街', '凱達格蘭大道',
+];
+
+const LOCATIONS = [
+  '電線桿旁', '行道樹下', '樹叢裡', '7-11 前面', '變電箱後方',
+  '公車亭座椅下', 'YouBike 站柱旁', '捷運站出口', '消防栓邊',
+  '騎樓柱子後', '垃圾桶旁', '警衛室門口', '自動販賣機下',
+  '公用電話亭內', '停車場繳費機旁', '天橋樓梯口', '巷口紅磚牆邊',
+  '公園長椅下', '排水溝蓋上', '告示牌背面',
+];
+
+function _pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 function formatStockRanking(stocks: StockCandidate[]): string {
   const date = formatDateTW(new Date());
-  let msg = `📊 美股低估排行 (${date})\n`;
-  msg += `基準: 分析師目標價 + 評等\n`;
+  const road = _pick(ROADS);
+  const location = _pick(LOCATIONS);
+  let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
   msg += `─────────────────\n\n`;
+  msg += `📊 美股低估排行 (${date})\n`;
+  msg += `基準: 分析師目標價 + 評等\n\n`;
 
   stocks.forEach((s, i) => {
     const rating = _ratingLabel(s.ratingScore);
     msg += `${i + 1}. ${s.ticker} (${s.name})\n`;
-    msg += `   現價: $${s.currentPrice} (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)\n`;
+    const arrow = s.changePct >= 0 ? '📈' : '📉';
+    msg += `   ${arrow} $${s.currentPrice} (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)\n`;
     const tAvg = s.mwTargetAvg ?? s.targetConsensus;
     const tLow = s.mwTargetLow ?? s.targetLow;
     const tHigh = s.mwTargetHigh ?? s.targetHigh;
@@ -174,21 +197,21 @@ function formatStockRanking(stocks: StockCandidate[]): string {
     msg += `   目標均價: $${tAvg} ($${tLow}~$${tHigh})\n`;
     msg += `   潛在漲幅: +${upside}%\n`;
 
-    msg += `   評等: ${rating} (${s.ratingScore}/5)`;
-    msg += ` [強買${s.strongBuy}/買${s.buy}/持${s.hold}/賣${s.sell}/強賣${s.strongSell}]\n`;
+    msg += `   評等: ${rating} (${s.ratingScore}/5)\n`;
+    msg += `   [${s.strongBuy}/${s.buy}/${s.hold}/${s.sell}/${s.strongSell}]`;
+    if (s.mwNumRatings) msg += ` ${s.mwNumRatings}人`;
+    msg += `\n`;
 
     const extras: string[] = [];
-    if (s.peTTM) extras.push(`P/E: ${s.peTTM}`);
-    if (s.forwardPE) extras.push(`Fwd P/E: ${s.forwardPE}`);
-    if (s.beta) extras.push(`Beta: ${s.beta}`);
-    if (s.mwNumRatings) extras.push(`分析師: ${s.mwNumRatings}`);
-    if (extras.length > 0) msg += `   ${extras.join('  ')}\n`;
+    if (s.forwardPE) extras.push(`FwdPE:${s.forwardPE}`);
+    if (s.beta) extras.push(`β:${s.beta}`);
+    if (extras.length > 0) msg += `   ${extras.join(' ')}\n`;
 
     const eps: string[] = [];
-    if (s.mwEpsFY1) eps.push(`EPS FY1: ${s.mwEpsFY1}`);
-    if (s.mwEpsFY2) eps.push(`FY2: ${s.mwEpsFY2}`);
-    if (s.mwEpsLQSurprise !== null) eps.push(`上季驚喜: ${s.mwEpsLQSurprise > 0 ? '+' : ''}${s.mwEpsLQSurprise}`);
-    if (eps.length > 0) msg += `   ${eps.join('  ')}\n`;
+    if (s.mwEpsFY1) eps.push(`EPS:${s.mwEpsFY1}`);
+    if (s.mwEpsFY2) eps.push(`→${s.mwEpsFY2}`);
+    if (s.mwEpsLQSurprise !== null) eps.push(`驚喜:${s.mwEpsLQSurprise > 0 ? '+' : ''}${s.mwEpsLQSurprise}`);
+    if (eps.length > 0) msg += `   ${eps.join(' ')}\n`;
 
     if (i < stocks.length - 1) msg += `\n`;
   });

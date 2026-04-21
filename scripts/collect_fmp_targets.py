@@ -8,7 +8,9 @@ import json
 import warnings
 import urllib.request
 import urllib.error
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+UTC8 = timezone(timedelta(hours=8))
 
 warnings.filterwarnings("ignore")
 
@@ -72,7 +74,7 @@ def main():
     # GitHub Actions passes this based on day-of-year
     batch = os.environ.get('FMP_BATCH', '')
 
-    print(f"[{datetime.now()}] Starting FMP price target collection (batch={batch or 'all'})...")
+    print(f"[{datetime.now(UTC8)}] Starting FMP price target collection (batch={batch or 'all'})...")
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
@@ -108,7 +110,7 @@ def main():
         data = fmp_get(f'price-target-consensus?symbol={ticker}')
         time.sleep(0.5)
 
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
 
         if not data or len(data) == 0:
             print("no target data")
@@ -133,7 +135,7 @@ def main():
 
     print(f"\nUpdated {updated_count} rows with target prices")
 
-    print(f"[{datetime.now()}] Done!")
+    print(f"[{datetime.now(UTC8)}] Done!")
 
 
 if __name__ == '__main__':

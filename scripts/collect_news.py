@@ -8,7 +8,9 @@ import warnings
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+UTC8 = timezone(timedelta(hours=8))
 
 warnings.filterwarnings("ignore")
 
@@ -77,9 +79,6 @@ def extract_ticker_tags(text: str, ticker_keywords: dict[str, list[str]]) -> lis
     upper = text.upper()
     tags = []
     for ticker, keywords in ticker_keywords.items():
-        if re.search(rf'\b{re.escape(ticker)}\b', upper):
-            tags.append(ticker)
-            continue
         for kw in keywords:
             if re.search(rf'\b{re.escape(kw.upper())}\b', upper):
                 tags.append(ticker)
@@ -119,12 +118,12 @@ def fetch_rss_feed(name: str, url: str) -> list[dict]:
         snippet = truncate(strip_html(description), SNIPPET_LENGTH)
 
         try:
-            date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z') if pub_date else datetime.utcnow()
+            date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z') if pub_date else datetime.now(UTC8)
         except ValueError:
             try:
-                date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %z').replace(tzinfo=None) if pub_date else datetime.utcnow()
+                date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %z').replace(tzinfo=None) if pub_date else datetime.now(UTC8)
             except ValueError:
-                date = datetime.utcnow()
+                date = datetime.now(UTC8)
 
         if title and link:
             items.append({
@@ -138,7 +137,7 @@ def fetch_rss_feed(name: str, url: str) -> list[dict]:
 
 
 def main():
-    print(f"[{datetime.now()}] Starting RSS news collection...")
+    print(f"[{datetime.now(UTC8)}] Starting RSS news collection...")
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
@@ -171,7 +170,7 @@ def main():
 
     # 3. Fetch all RSS feeds
     all_new = []
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
 
     for feed_name, feed_url, source in RSS_FEEDS:
         print(f"  Fetching {feed_name}...", end=' ')
@@ -207,7 +206,7 @@ def main():
     else:
         print("\nNo new articles to add")
 
-    print(f"[{datetime.now()}] Done!")
+    print(f"[{datetime.now(UTC8)}] Done!")
 
 
 if __name__ == '__main__':

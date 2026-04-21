@@ -3,7 +3,9 @@
 import os
 import time
 import warnings
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
+
+UTC8 = timezone(timedelta(hours=8))
 
 warnings.filterwarnings("ignore")
 
@@ -24,7 +26,7 @@ def get_sheets_service():
 
 
 def main():
-    print(f"[{datetime.now()}] Starting news cleanup (retention={RETENTION_DAYS} days)...")
+    print(f"[{datetime.now(UTC8)}] Starting news cleanup (retention={RETENTION_DAYS} days)...")
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
@@ -39,7 +41,7 @@ def main():
         print("Nothing to clean up")
         return
 
-    cutoff = datetime.now() - timedelta(days=RETENTION_DAYS)
+    cutoff = datetime.now(UTC8) - timedelta(days=RETENTION_DAYS)
     keep = []
     removed = 0
 
@@ -92,7 +94,7 @@ def main():
                 else:
                     raise
 
-    print(f"[{datetime.now()}] Done! Removed {removed}, kept {len(keep)}")
+    print(f"[{datetime.now(UTC8)}] Done! Removed {removed}, kept {len(keep)}")
 
 
 if __name__ == '__main__':

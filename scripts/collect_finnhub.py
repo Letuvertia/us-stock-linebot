@@ -6,7 +6,9 @@ import json
 import warnings
 import urllib.request
 import urllib.error
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+UTC8 = timezone(timedelta(hours=8))
 
 warnings.filterwarnings("ignore")
 
@@ -88,7 +90,7 @@ def calc_rating_score(rec: dict) -> float:
 
 def fetch_ticker_data(ticker: str, exchange: str, name: str) -> list:
     """Fetch all Finnhub data for a single ticker and return a row."""
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
 
     # 1. Quote
     quote = finnhub_get(f'/quote?symbol={ticker}')
@@ -164,7 +166,7 @@ def fetch_ticker_data(ticker: str, exchange: str, name: str) -> list:
 
 
 def main():
-    print(f"[{datetime.now()}] Starting Finnhub data collection...")
+    print(f"[{datetime.now(UTC8)}] Starting Finnhub data collection...")
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
@@ -199,7 +201,7 @@ def main():
         updated_count += 1
 
     print(f"\nUpdated {updated_count} rows in StockUniverse")
-    print(f"[{datetime.now()}] Done!")
+    print(f"[{datetime.now(UTC8)}] Done!")
 
 
 if __name__ == '__main__':

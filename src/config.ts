@@ -2,7 +2,7 @@
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 const LINE_REPLY_URL = 'https://api.line.me/v2/bot/message/reply';

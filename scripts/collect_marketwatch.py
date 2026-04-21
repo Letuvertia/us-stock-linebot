@@ -9,7 +9,9 @@ import re
 import warnings
 import urllib.request
 import urllib.error
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+UTC8 = timezone(timedelta(hours=8))
 
 warnings.filterwarnings("ignore")
 
@@ -205,7 +207,7 @@ def parse_analyst_data(html: str, current_price: float) -> dict:
 def main():
     batch = os.environ.get('MW_BATCH', '')
 
-    print(f"[{datetime.now()}] Starting MarketWatch analyst data collection (batch={batch or 'all'})...")
+    print(f"[{datetime.now(UTC8)}] Starting MarketWatch analyst data collection (batch={batch or 'all'})...")
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
@@ -241,7 +243,7 @@ def main():
         html = fetch_page(ticker)
         time.sleep(REQUEST_DELAY)
 
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
 
         if not html:
             row_data = [''] * 11 + [now]
@@ -272,7 +274,7 @@ def main():
         updated_count += 1
 
     print(f"\nUpdated {updated_count} rows with MarketWatch data")
-    print(f"[{datetime.now()}] Done!")
+    print(f"[{datetime.now(UTC8)}] Done!")
 
 
 if __name__ == '__main__':
