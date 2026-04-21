@@ -2,7 +2,7 @@ name: Collect FMP Target Prices
 
 on:
   schedule:
-    - cron: '0 19 * * *'
+    - cron: '3 0 * * *'   # 8:03 AM UTC+8
   workflow_dispatch:
     inputs:
       batch:

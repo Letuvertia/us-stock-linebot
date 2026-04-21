@@ -23,13 +23,20 @@ MW_BASE = 'https://www.marketwatch.com/investing/stock'
 
 COL_START = 'AL'
 COL_END = 'AW'
-REQUEST_DELAY = float(os.environ.get('MW_REQUEST_DELAY', '5.0'))
+REQUEST_DELAY = float(os.environ.get('MW_REQUEST_DELAY', '8.0'))
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
     'Referer': 'https://www.google.com/',
-    'Accept': 'text/html,application/xhtml+xml',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'cross-site',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    'Cache-Control': 'max-age=0',
 }
 
 
@@ -196,7 +203,9 @@ def parse_analyst_data(html: str, current_price: float) -> dict:
 
 
 def main():
-    print(f"[{datetime.now()}] Starting MarketWatch analyst data collection...")
+    batch = os.environ.get('MW_BATCH', '')
+
+    print(f"[{datetime.now()}] Starting MarketWatch analyst data collection (batch={batch or 'all'})...")
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
@@ -205,10 +214,21 @@ def main():
         range='StockUniverse!A2:D'
     ).execute()
     rows = result.get('values', [])
-    print(f"Found {len(rows)} tickers")
+    total = len(rows)
+    print(f"Found {total} tickers")
+
+    if batch == 'first':
+        print(f"Batch: first 250 tickers (1-250)")
+    elif batch == 'second':
+        print(f"Batch: last {total - 250} tickers (251-{total})")
 
     updated_count = 0
     for i, row in enumerate(rows):
+        if batch == 'first' and i >= 250:
+            break
+        if batch == 'second' and i < 250:
+            continue
+
         ticker = row[0] if len(row) > 0 else ''
         current_price = float(row[3]) if len(row) > 3 and row[3] else 0
         row_num = i + 2
@@ -216,7 +236,7 @@ def main():
         if not ticker:
             continue
 
-        print(f"[{i+1}/{len(rows)}] {ticker}...", end=' ')
+        print(f"[{i+1}/{total}] {ticker}...", end=' ')
 
         html = fetch_page(ticker)
         time.sleep(REQUEST_DELAY)

@@ -1,17 +1,20 @@
 name: Collect MarketWatch Analyst Estimates
 
 on:
-  # Disabled: MarketWatch blocks GitHub Actions IPs (HTTP 401)
-  # Run locally instead: scripts/run_mw.sh
-  # schedule:
-  #   - cron: '0 3 * * *'
-  #   - cron: '30 19 * * *'
+  schedule:
+    - cron: '3 23 * * *'   # Batch 1: 7:03 AM UTC+8
+    - cron: '3 5 * * *'    # Batch 2: 1:03 PM UTC+8
   workflow_dispatch:
+    inputs:
+      batch:
+        description: 'Batch to run: first, second, or all'
+        required: false
+        default: 'all'
 
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -26,8 +29,25 @@ jobs:
       - name: Write service account credentials
         run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa.json
 
+      - name: Determine batch
+        id: batch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "batch=${{ github.event.inputs.batch }}" >> $GITHUB_OUTPUT
+          else
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "23" ]; then
+              echo "batch=first" >> $GITHUB_OUTPUT
+            else
+              echo "batch=second" >> $GITHUB_OUTPUT
+            fi
+          fi
+
       - name: Run MarketWatch collector
         env:
           GOOGLE_CREDS_FILE: /tmp/gsa.json
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-        run: python scripts/collect_marketwatch.py
+          MW_BATCH: ${{ steps.batch.outputs.batch }}
+        run: |
+          echo "Running batch: $MW_BATCH"
+          python scripts/collect_marketwatch.py

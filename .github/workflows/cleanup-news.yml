@@ -2,7 +2,7 @@ name: Cleanup Old News
 
 on:
   schedule:
-    - cron: '47 2 * * *'
+    - cron: '47 18 * * *'  # 2:47 AM UTC+8
   workflow_dispatch:
 
 jobs:
