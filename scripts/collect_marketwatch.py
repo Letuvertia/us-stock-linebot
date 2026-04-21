@@ -72,7 +72,11 @@ def fetch_page(ticker: str) -> str | None:
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             if resp.status == 200:
-                return resp.read().decode()
+                data = resp.read()
+                if resp.headers.get('Content-Encoding') == 'gzip':
+                    import gzip
+                    data = gzip.decompress(data)
+                return data.decode()
     except urllib.error.HTTPError as e:
         if e.code == 403:
             print(f"blocked")
