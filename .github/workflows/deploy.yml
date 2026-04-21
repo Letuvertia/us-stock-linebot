@@ -24,5 +24,8 @@ jobs:
       - name: Authenticate clasp
         run: echo '${{ secrets.CLASP_TOKEN }}' > ~/.clasprc.json
 
+      - name: Build TypeScript
+        run: npm run build
+
       - name: Push to Apps Script
         run: npx clasp push --force
