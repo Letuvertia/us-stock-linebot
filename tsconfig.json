@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "target": "ES2019",
+    "module": "None",
+    "outDir": "dist",
+    "rootDir": ".",
+    "noImplicitAny": true,
+    "strict": true,
+    "alwaysStrict": false,
+    "skipLibCheck": true,
+    "isolatedModules": false,
+    "removeComments": false
+  },
+  "include": ["src/**/*.ts", "setup/**/*.ts"]
+}

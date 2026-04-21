@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.clasprc.json
+*.js.map
+.env
+*.json
+!appsscript.json
+!package.json
+!package-lock.json
+!tsconfig.json
+scripts/collector.log

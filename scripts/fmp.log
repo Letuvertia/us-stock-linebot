@@ -1,0 +1,264 @@
+[2026-04-21 06:30:02.192468] Starting FMP price target collection...
+Found 154 tickers
+[1/154] AAPL... consensus=$315.91 upside=15.7%
+[2/154] MSFT... consensus=$572.76 upside=37.0%
+[3/154] GOOGL... consensus=$376.32 upside=11.53%
+[4/154] AMZN... consensus=$285.52 upside=15.0%
+[5/154] NVDA... consensus=$277.82 upside=37.49%
+[6/154] META... consensus=$847.86 upside=26.37%
+[7/154] TSLA... consensus=$459.14 upside=16.98%
+[8/154] TSM... consensus=$427.5 upside=16.73%
+[9/154] AVGO...   HTTP 402
+no target data
+[10/154] JPM... consensus=$335.9 upside=5.97%
+[11/154] V... consensus=$377.83 upside=20.35%
+[12/154] UNH... consensus=$378.14 upside=16.9%
+[13/154] MA...   HTTP 402
+no target data
+[14/154] HD...   HTTP 402
+no target data
+[15/154] COST... consensus=$1070 upside=7.23%
+[16/154] NFLX... consensus=$116.29 upside=22.63%
+[17/154] CRM...   HTTP 402
+no target data
+[18/154] AMD... consensus=$301.9 upside=9.8%
+[19/154] QCOM...   HTTP 402
+no target data
+[20/154] ADBE... consensus=$348 upside=39.97%
+[21/154] LLY...   HTTP 402
+no target data
+[22/154] PEP... consensus=$172.75 upside=10.04%
+[23/154] KO... consensus=$84.88 upside=12.45%
+[24/154] MRK...   HTTP 402
+no target data
+[25/154] ABBV... consensus=$256.36 upside=25.85%
+[26/154] PFE... consensus=$27.5 upside=-0.07%
+[27/154] TMO...   HTTP 402
+no target data
+[28/154] CSCO... consensus=$96.5 upside=10.02%
+[29/154] ACN...   HTTP 402
+no target data
+[30/154] MCD...   HTTP 402
+no target data
+[31/154] ABT...   HTTP 402
+no target data
+[32/154] DHR...   HTTP 402
+no target data
+[33/154] TXN...   HTTP 402
+no target data
+[34/154] NEE...   HTTP 402
+no target data
+[35/154] PM...   HTTP 402
+no target data
+[36/154] UPS...   HTTP 402
+no target data
+[37/154] RTX...   HTTP 402
+no target data
+[38/154] HON...   HTTP 402
+no target data
+[39/154] INTC... consensus=$53 upside=-19.33%
+[40/154] LOW...   HTTP 402
+no target data
+[41/154] ORCL...   HTTP 402
+no target data
+[42/154] AMAT...   HTTP 402
+no target data
+[43/154] BKNG...   HTTP 402
+no target data
+[44/154] SBUX... consensus=$103.92 upside=5.02%
+[45/154] GS... consensus=$971.3 upside=3.14%
+[46/154] BLK...   HTTP 402
+no target data
+[47/154] ISRG...   HTTP 402
+no target data
+[48/154] MDLZ...   HTTP 402
+no target data
+[49/154] GILD...   HTTP 402
+no target data
+[50/154] ADP...   HTTP 402
+no target data
+[51/154] CVX... consensus=$190.93 upside=4.19%
+[52/154] XOM... consensus=$160.43 upside=8.63%
+[53/154] BA... consensus=$260.36 upside=15.67%
+[54/154] CAT...   HTTP 402
+no target data
+[55/154] DE...   HTTP 402
+no target data
+[56/154] MMM...   HTTP 402
+no target data
+[57/154] DIS... consensus=$139.5 upside=31.23%
+[58/154] NKE... consensus=$69.88 upside=50.34%
+[59/154] PYPL... consensus=$53.33 upside=3.63%
+[60/154] SQ... consensus=$87.5 upside=%
+[61/154] SHOP... consensus=$166.16 upside=22.95%
+[62/154] SNOW...   HTTP 402
+no target data
+[63/154] UBER... consensus=$105.04 upside=35.55%
+[64/154] ABNB...   HTTP 402
+no target data
+[65/154] COIN... consensus=$266.18 upside=25.78%
+[66/154] PLTR... consensus=$198 upside=35.72%
+[67/154] RIVN... consensus=$18.14 upside=7.21%
+[68/154] SOFI... consensus=$28.56 upside=46.46%
+[69/154] ARM...   HTTP 402
+no target data
+[70/154] PANW...   HTTP 402
+no target data
+[71/154] CRWD...   HTTP 402
+no target data
+[72/154] DDOG...   HTTP 402
+no target data
+[73/154] ZS...   HTTP 402
+no target data
+[74/154] NET...   HTTP 402
+no target data
+[75/154] MU...   HTTP 402
+no target data
+[76/154] MRVL...   HTTP 402
+no target data
+[77/154] LRCX...   HTTP 402
+no target data
+[78/154] KLAC...   HTTP 402
+no target data
+[79/154] SNPS...   HTTP 402
+no target data
+[80/154] CDNS...   HTTP 402
+no target data
+[81/154] FTNT...   HTTP 402
+no target data
+[82/154] WDAY...   HTTP 402
+no target data
+[83/154] TEAM...   HTTP 402
+no target data
+[84/154] NOW...   HTTP 402
+no target data
+[85/154] INTU...   HTTP 402
+no target data
+[86/154] MELI...   HTTP 402
+no target data
+[87/154] SE...   HTTP 402
+no target data
+[88/154] WMT... consensus=$137.04 upside=7.13%
+[89/154] TGT... consensus=$114.06 upside=-12.38%
+[90/154] AMGN...   HTTP 402
+no target data
+[91/154] REGN...   HTTP 402
+no target data
+[92/154] VRTX...   HTTP 402
+no target data
+[93/154] MRNA... consensus=$35.67 upside=-34.66%
+[94/154] BIIB...   HTTP 402
+no target data
+[95/154] SYK...   HTTP 402
+no target data
+[96/154] BDX...   HTTP 402
+no target data
+[97/154] ZTS...   HTTP 402
+no target data
+[98/154] CI...   HTTP 402
+no target data
+[99/154] ELV...   HTTP 402
+no target data
+[100/154] HUM...   HTTP 402
+no target data
+[101/154] MCK...   HTTP 402
+no target data
+[102/154] SCHW...   HTTP 402
+no target data
+[103/154] MS...   HTTP 402
+no target data
+[104/154] C... consensus=$139.58 upside=4.91%
+[105/154] BAC... consensus=$61.22 upside=13.48%
+[106/154] WFC... consensus=$98.13 upside=19.71%
+[107/154] USB...   HTTP 402
+no target data
+[108/154] PNC...   HTTP 402
+no target data
+[109/154] AXP...   HTTP 402
+no target data
+[110/154] SPGI...   HTTP 402
+no target data
+[111/154] ICE...   HTTP 402
+no target data
+[112/154] CME...   HTTP 402
+no target data
+[113/154] CB...   HTTP 402
+no target data
+[114/154] AON...   HTTP 402
+no target data
+[115/154] MMC...   HTTP 402
+no target data
+[116/154] PGR...   HTTP 402
+no target data
+[117/154] TRV...   HTTP 402
+no target data
+[118/154] ALL...   HTTP 402
+no target data
+[119/154] DELL...   HTTP 402
+no target data
+[120/154] HPQ...   HTTP 402
+no target data
+[121/154] IBM...   HTTP 402
+no target data
+[122/154] GE... consensus=$391.5 upside=28.95%
+[123/154] LMT... consensus=$645.33 upside=11.02%
+[124/154] NOC...   HTTP 402
+no target data
+[125/154] GD...   HTTP 402
+no target data
+[126/154] F... consensus=$13.95 upside=8.39%
+[127/154] GM... consensus=$91.71 upside=13.87%
+[128/154] RACE...   HTTP 402
+no target data
+[129/154] FDX... consensus=$364.19 upside=-7.51%
+[130/154] DAL... consensus=$82.45 upside=15.78%
+[131/154] UAL... consensus=$139.32 upside=40.86%
+[132/154] LUV...   HTTP 402
+no target data
+[133/154] MAR...   Rate limited! Daily quota may be exhausted.
+no target data
+[134/154] HLT...   Rate limited! Daily quota may be exhausted.
+no target data
+[135/154] DASH...   Rate limited! Daily quota may be exhausted.
+no target data
+[136/154] RBLX...   Rate limited! Daily quota may be exhausted.
+no target data
+[137/154] SPOT...   Rate limited! Daily quota may be exhausted.
+no target data
+[138/154] TTD...   Rate limited! Daily quota may be exhausted.
+no target data
+[139/154] ROKU...   Rate limited! Daily quota may be exhausted.
+no target data
+[140/154] U...   Rate limited! Daily quota may be exhausted.
+no target data
+[141/154] SMCI...   Rate limited! Daily quota may be exhausted.
+no target data
+[142/154] ON...   Rate limited! Daily quota may be exhausted.
+no target data
+[143/154] ENPH...   Rate limited! Daily quota may be exhausted.
+no target data
+[144/154] FSLR...   Rate limited! Daily quota may be exhausted.
+no target data
+[145/154] CEG...   Rate limited! Daily quota may be exhausted.
+no target data
+[146/154] VST...   Rate limited! Daily quota may be exhausted.
+no target data
+[147/154] LNG...   Rate limited! Daily quota may be exhausted.
+no target data
+[148/154] ET...   Rate limited! Daily quota may be exhausted.
+no target data
+[149/154] OXY...   Rate limited! Daily quota may be exhausted.
+no target data
+[150/154] COP...   Rate limited! Daily quota may be exhausted.
+no target data
+[151/154] SLB...   Rate limited! Daily quota may be exhausted.
+no target data
+[152/154] EOG...   Rate limited! Daily quota may be exhausted.
+no target data
+[153/154] FCX...   Rate limited! Daily quota may be exhausted.
+no target data
+[154/154] NEM...   Rate limited! Daily quota may be exhausted.
+no target data
+
+Updated 154 rows with target prices
+[2026-04-21 06:34:20.482965] Done!

@@ -1,0 +1,18 @@
+{
+  "name": "us-stock-linebot",
+  "version": "1.0.0",
+  "description": "US Stock Analysis LINE Bot powered by GAS + Gemini",
+  "scripts": {
+    "build": "tsc && cp appsscript.json dist/",
+    "push": "npm run build && npx --package @google/clasp@3 clasp push --force",
+    "deploy": "npm run push",
+    "open": "npx --package @google/clasp@3 clasp open",
+    "logs": "npx --package @google/clasp@3 clasp logs",
+    "login": "npx --package @google/clasp@3 clasp login"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2",
+    "@types/google-apps-script": "^1.0.83",
+    "typescript": "^5.4.5"
+  }
+}

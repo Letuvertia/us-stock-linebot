@@ -1,0 +1,53 @@
+name: Collect FMP Target Prices
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: 'Batch to run: first, second, or all'
+        required: false
+        default: 'all'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install google-auth google-api-python-client
+
+      - name: Write service account credentials
+        run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa.json
+
+      - name: Determine batch
+        id: batch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "batch=${{ github.event.inputs.batch }}" >> $GITHUB_OUTPUT
+          else
+            DOY=$(date +%j)
+            if [ $((DOY % 2)) -eq 0 ]; then
+              echo "batch=first" >> $GITHUB_OUTPUT
+            else
+              echo "batch=second" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Run FMP collector
+        env:
+          GOOGLE_CREDS_FILE: /tmp/gsa.json
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          FMP_BATCH: ${{ steps.batch.outputs.batch }}
+        run: |
+          echo "Running batch: $FMP_BATCH"
+          python scripts/collect_fmp_targets.py

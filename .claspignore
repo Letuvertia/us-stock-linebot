@@ -1,0 +1,10 @@
+node_modules/**
+.git/**
+.github/**
+.gitignore
+package.json
+package-lock.json
+tsconfig.json
+README.md
+.clasp.json
+.claspignore
