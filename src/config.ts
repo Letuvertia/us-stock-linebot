@@ -7,21 +7,6 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 const LINE_REPLY_URL = 'https://api.line.me/v2/bot/message/reply';
 
-// --- RSS Feed Sources ---
-
-interface RSSFeedConfig {
-  name: string;
-  url: string;
-  source: string;
-}
-
-const RSS_FEEDS: RSSFeedConfig[] = [
-  { name: 'Reuters Business', url: 'https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best', source: 'Reuters' },
-  { name: 'CNBC Earnings', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069', source: 'CNBC' },
-  { name: 'CNBC Investing', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839135', source: 'CNBC' },
-  { name: 'CNBC Commentary', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100370673', source: 'CNBC' },
-];
-
 // --- Sheet Configuration ---
 
 const SHEET_NAMES = {

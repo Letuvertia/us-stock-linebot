@@ -18,21 +18,9 @@ function runPostMarketScan(): void {
   });
 }
 
-function runNewsCollection(): void {
-  withErrorHandling('runNewsCollection', () => {
-    executeNewsCollection();
-  });
-}
-
 function runNewsAnalysis(): void {
   withErrorHandling('runNewsAnalysis', () => {
     executeNewsAnalysis();
-  });
-}
-
-function runNewsCleanup(): void {
-  withErrorHandling('runNewsCleanup', () => {
-    executeNewsCleanup();
   });
 }
 

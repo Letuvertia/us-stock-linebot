@@ -25,12 +25,6 @@ function installAllTriggers(): void {
     .inTimezone(TIMEZONE)
     .create();
 
-  // Module B: News collection (every 6 hours)
-  ScriptApp.newTrigger('runNewsCollection')
-    .timeBased()
-    .everyHours(6)
-    .create();
-
   // Module B: News analysis (daily 18:00 Taiwan time)
   ScriptApp.newTrigger('runNewsAnalysis')
     .timeBased()
@@ -40,14 +34,5 @@ function installAllTriggers(): void {
     .inTimezone(TIMEZONE)
     .create();
 
-  // Module B: Old news cleanup (daily 03:00 Taiwan time)
-  ScriptApp.newTrigger('runNewsCleanup')
-    .timeBased()
-    .atHour(3)
-    .nearMinute(0)
-    .everyDays(1)
-    .inTimezone(TIMEZONE)
-    .create();
-
-  logInfo('installAllTriggers', 'All 5 triggers installed successfully');
+  logInfo('installAllTriggers', 'All 3 triggers installed successfully');
 }

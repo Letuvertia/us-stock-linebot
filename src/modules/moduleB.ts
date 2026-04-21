@@ -1,10 +1,3 @@
-function executeNewsCollection(): void {
-  const fnName = 'executeNewsCollection';
-  logInfo(fnName, 'Starting RSS news collection');
-  collectAllNews();
-  logInfo(fnName, 'News collection complete');
-}
-
 function executeNewsAnalysis(): void {
   const fnName = 'executeNewsAnalysis';
   logInfo(fnName, 'Starting news-driven analysis');
@@ -48,10 +41,4 @@ function executeNewsAnalysis(): void {
   const summary = `\n═══════════════════\n✅ 分析完成：共 ${analyzed}/${watchlist.length} 檔個股`;
   sendPushMessage(summary);
   logInfo(fnName, `Analysis complete: ${analyzed}/${watchlist.length} stocks`);
-}
-
-function executeNewsCleanup(): void {
-  const fnName = 'executeNewsCleanup';
-  const deleted = deleteOldNews();
-  logInfo(fnName, `Cleaned up ${deleted} old news articles`);
 }
