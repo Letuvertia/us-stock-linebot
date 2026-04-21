@@ -40,6 +40,23 @@ def get_sheets_service():
     return build('sheets', 'v4', credentials=creds, cache_discovery=False)
 
 
+def sheets_update_with_retry(sheets, range_, values, value_input='RAW', retries=3):
+    for attempt in range(retries):
+        try:
+            sheets.update(
+                spreadsheetId=SPREADSHEET_ID, range=range_,
+                valueInputOption=value_input, body={'values': values}
+            ).execute()
+            return
+        except Exception as e:
+            if '429' in str(e) and attempt < retries - 1:
+                wait = 30 * (attempt + 1)
+                print(f"  Sheets quota hit, waiting {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
+
+
 def fetch_page(ticker: str) -> str | None:
     url = f"{MW_BASE}/{ticker.lower()}/analystestimates"
     req = urllib.request.Request(url, headers=HEADERS)
@@ -231,12 +248,7 @@ def main():
             else:
                 print(f"no target (EPS FY1={d['eps_fy1_avg']})")
 
-        sheets.update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f'StockUniverse!{COL_START}{row_num}:{COL_END}{row_num}',
-            valueInputOption='RAW',
-            body={'values': [row_data]}
-        ).execute()
+        sheets_update_with_retry(sheets, f'StockUniverse!{COL_START}{row_num}:{COL_END}{row_num}', [row_data])
         updated_count += 1
 
     print(f"\nUpdated {updated_count} rows with MarketWatch data")

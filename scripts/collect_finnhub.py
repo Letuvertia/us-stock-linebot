@@ -39,6 +39,23 @@ def get_sheets_service():
     return build('sheets', 'v4', credentials=creds, cache_discovery=False)
 
 
+def sheets_update_with_retry(sheets, range_, values, value_input='USER_ENTERED', retries=3):
+    for attempt in range(retries):
+        try:
+            sheets.update(
+                spreadsheetId=SPREADSHEET_ID, range=range_,
+                valueInputOption=value_input, body={'values': values}
+            ).execute()
+            return
+        except Exception as e:
+            if '429' in str(e) and attempt < retries - 1:
+                wait = 30 * (attempt + 1)
+                print(f"  Sheets quota hit, waiting {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
+
+
 def finnhub_get(endpoint: str) -> dict | list | None:
     url = f"{FINNHUB_BASE}{endpoint}{'&' if '?' in endpoint else '?'}token={FINNHUB_TOKEN}"
     try:
@@ -177,14 +194,8 @@ def main():
             print(f"ERROR: {e}")
             data = [ticker, exchange, name] + [''] * 28
 
-        # Write this row immediately (row index i+2 because row 1 is header)
         row_num = i + 2
-        sheets.update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f'StockUniverse!A{row_num}:AE{row_num}',
-            valueInputOption='USER_ENTERED',
-            body={'values': [data]}
-        ).execute()
+        sheets_update_with_retry(sheets, f'StockUniverse!A{row_num}:AE{row_num}', [data])
         updated_count += 1
 
     print(f"\nUpdated {updated_count} rows in StockUniverse")
