@@ -35,6 +35,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
     'MW_EPS_FY1_Avg', 'MW_EPS_FY2_Avg',
     'MW_EPS_LQ_Est', 'MW_EPS_LQ_Act', 'MW_EPS_LQ_Surprise',
     'MW_Updated_At',
+    'Keywords',
   ],
 };
 

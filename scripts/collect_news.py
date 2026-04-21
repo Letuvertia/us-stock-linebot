@@ -73,12 +73,17 @@ def truncate(text: str, max_len: int) -> str:
     return text[:max_len - 3] + '...'
 
 
-def extract_ticker_tags(text: str, tickers: list[str]) -> list[str]:
+def extract_ticker_tags(text: str, ticker_keywords: dict[str, list[str]]) -> list[str]:
     upper = text.upper()
     tags = []
-    for ticker in tickers:
+    for ticker, keywords in ticker_keywords.items():
         if re.search(rf'\b{re.escape(ticker)}\b', upper):
             tags.append(ticker)
+            continue
+        for kw in keywords:
+            if re.search(rf'\b{re.escape(kw.upper())}\b', upper):
+                tags.append(ticker)
+                break
     return tags
 
 
@@ -137,13 +142,24 @@ def main():
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
-    # 1. Read all tickers for tagging
+    # 1. Read tickers (col A) and keywords (col AX) for tagging
     result = sheets.get(
         spreadsheetId=SPREADSHEET_ID,
-        range='StockUniverse!A2:A'
+        range='StockUniverse!A2:AX'
     ).execute()
-    tickers = [row[0] for row in result.get('values', []) if row]
-    print(f"Loaded {len(tickers)} tickers for tagging")
+    rows = result.get('values', [])
+    ticker_keywords: dict[str, list[str]] = {}
+    for row in rows:
+        if not row:
+            continue
+        ticker = row[0]
+        kw_col = 49  # AX = index 49 (0-based from A)
+        keywords = []
+        if len(row) > kw_col and row[kw_col].strip():
+            keywords = [k.strip() for k in row[kw_col].split(',') if k.strip()]
+        ticker_keywords[ticker] = keywords
+    kw_count = sum(1 for kws in ticker_keywords.values() if kws)
+    print(f"Loaded {len(ticker_keywords)} tickers for tagging ({kw_count} with keywords)")
 
     # 2. Read existing URLs for dedup
     result = sheets.get(
@@ -166,7 +182,7 @@ def main():
             if item['link'] in existing_urls:
                 continue
 
-            tags = extract_ticker_tags(item['title'] + ' ' + item['snippet'], tickers)
+            tags = extract_ticker_tags(item['title'] + ' ' + item['snippet'], ticker_keywords)
             date_str = item['date'].strftime('%Y-%m-%d %H:%M:%S')
 
             all_new.append([
