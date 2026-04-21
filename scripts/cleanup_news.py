@@ -41,7 +41,7 @@ def main():
         print("Nothing to clean up")
         return
 
-    cutoff = datetime.now(UTC8) - timedelta(days=RETENTION_DAYS)
+    cutoff = datetime.now(UTC8).replace(tzinfo=None) - timedelta(days=RETENTION_DAYS)
     keep = []
     removed = 0
 
