@@ -39,7 +39,7 @@ def get_sheets_service():
     return build('sheets', 'v4', credentials=creds, cache_discovery=False)
 
 
-def sheets_update_with_retry(sheets, range_, values, value_input='USER_ENTERED', retries=3):
+def sheets_update_with_retry(sheets, range_, values, value_input='USER_ENTERED', retries=5):
     for attempt in range(retries):
         try:
             sheets.update(
@@ -48,9 +48,9 @@ def sheets_update_with_retry(sheets, range_, values, value_input='USER_ENTERED',
             ).execute()
             return
         except Exception as e:
-            if '429' in str(e) and attempt < retries - 1:
+            if attempt < retries - 1 and ('429' in str(e) or 'Timeout' in str(e) or 'timed out' in str(e)):
                 wait = 30 * (attempt + 1)
-                print(f"  Sheets quota hit, waiting {wait}s...")
+                print(f"  Sheets error ({e.__class__.__name__}), retrying in {wait}s...")
                 time.sleep(wait)
             else:
                 raise

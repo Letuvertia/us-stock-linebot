@@ -4,6 +4,7 @@ dist/
 *.js.map
 .env
 *.json
+!.clasp.json
 !appsscript.json
 !package.json
 !package-lock.json

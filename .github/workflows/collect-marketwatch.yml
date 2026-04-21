@@ -1,9 +1,11 @@
 name: Collect MarketWatch Analyst Estimates
 
 on:
-  schedule:
-    - cron: '0 3 * * *'
-    - cron: '30 19 * * *'
+  # Disabled: MarketWatch blocks GitHub Actions IPs (HTTP 401)
+  # Run locally instead: scripts/run_mw.sh
+  # schedule:
+  #   - cron: '0 3 * * *'
+  #   - cron: '30 19 * * *'
   workflow_dispatch:
 
 jobs:
