@@ -19,9 +19,7 @@ function runPostMarketScan(): void {
 }
 
 function runNewsAnalysis(): void {
-  withErrorHandling('runNewsAnalysis', () => {
-    executeNewsAnalysis();
-  });
+  logInfo('runNewsAnalysis', 'News analysis is disabled (OpenAI TPM limit too low)');
 }
 
 // ===== Setup Functions (run manually in GAS editor) =====
