@@ -18,7 +18,7 @@ from googleapiclient.discovery import build
 # --- Config ---
 CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', '/mnt/c/Users/1026o/Desktop/us-stock-linebot/juns-stock-agent-5f32b75f7c83.json')
 SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
-FINNHUB_TOKEN = os.environ.get('FINNHUB_API_KEY', 'd7j6kahr01qp3g1s085gd7j6kahr01qp3g1s0860')
+FINNHUB_TOKEN = os.environ['FINNHUB_API_KEY']
 FINNHUB_BASE = 'https://finnhub.io/api/v1'
 RATE_LIMIT_DELAY = 1.1  # 60 calls/min = 1 call/sec + buffer
 

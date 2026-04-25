@@ -20,7 +20,7 @@ from googleapiclient.discovery import build
 # --- Config ---
 CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', '/mnt/c/Users/1026o/Desktop/us-stock-linebot/juns-stock-agent-5f32b75f7c83.json')
 SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
-FMP_API_KEY = os.environ.get('FMP_API_KEY', 'qXEMjVQ4E4Xhha7RpQOo2ZR50WtozY0k')
+FMP_API_KEY = os.environ['FMP_API_KEY']
 FMP_BASE = 'https://financialmodelingprep.com/stable'
 
 # Target columns: AF=Target_High, AG=Target_Low, AH=Target_Consensus, AI=Target_Median, AJ=Upside_Pct, AK=FMP_Updated_At
