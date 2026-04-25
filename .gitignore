@@ -10,3 +10,5 @@ dist/
 !package-lock.json
 !tsconfig.json
 scripts/collector.log
+.gitnexus
+scripts/__pycache__/
