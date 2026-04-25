@@ -3,7 +3,7 @@ interface NewsItem {
   date: Date;
   tickerTags: string[];
   title: string;
-  snippet: string;
+  content: string;
   url: string;
   processedAt: Date;
 }
@@ -23,7 +23,7 @@ function getNewsForTicker(ticker: string, days: number): NewsItem[] {
       date: new Date(String(row[1])),
       tickerTags: String(row[2]).split(','),
       title: String(row[3]),
-      snippet: String(row[4]),
+      content: String(row[4]),
       url: String(row[5]),
       processedAt: new Date(String(row[6])),
     }))

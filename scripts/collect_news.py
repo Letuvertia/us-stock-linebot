@@ -9,11 +9,12 @@ import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from googlenewsdecoder import gnewsdecoder
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import UTC8, SPREADSHEET_ID, get_sheets_service, sheets_append_with_retry
 
-SNIPPET_LENGTH = 200
+CONTENT_MAX_LENGTH = 2000
 
 RSS_FEEDS = [
     ('CNBC Finance', 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664', 'CNBC'),
@@ -45,6 +46,39 @@ def truncate(text: str, max_len: int) -> str:
     return text[:max_len - 3] + '...'
 
 
+BOILERPLATE_PATTERNS = re.compile(
+    r'sign up for|delivered to your inbox|get more cnbc|all rights reserved|data is a real-time|'
+    r'data also provided|disclaimer|©|privacy policy|terms of service',
+    re.IGNORECASE,
+)
+
+
+def fetch_article_content(url: str) -> str:
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': HEADERS['User-Agent'],
+            'Accept': 'text/html,application/xhtml+xml',
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            if resp.status != 200:
+                return ''
+            html = resp.read().decode('utf-8', errors='replace')
+    except Exception:
+        return ''
+
+    paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html, re.DOTALL | re.IGNORECASE)
+    cleaned = []
+    for p in paragraphs:
+        t = strip_html(p)
+        if len(t) < 40 or BOILERPLATE_PATTERNS.search(t):
+            continue
+        if t.count(' ') < len(t) * 0.08:
+            continue
+        cleaned.append(t)
+    text = '\n'.join(cleaned)
+    return truncate(text, CONTENT_MAX_LENGTH)
+
+
 def extract_ticker_tags(text: str, ticker_keywords: dict[str, list[str]]) -> list[str]:
     upper = text.upper()
     tags = []
@@ -54,6 +88,16 @@ def extract_ticker_tags(text: str, ticker_keywords: dict[str, list[str]]) -> lis
                 tags.append(ticker)
                 break
     return tags
+
+
+def decode_google_news_url(url: str) -> str:
+    try:
+        result = gnewsdecoder(url, interval=1)
+        if result.get('status'):
+            return result['decoded_url']
+    except Exception:
+        pass
+    return url
 
 
 def fetch_rss_feed(name: str, url: str) -> list[dict]:
@@ -85,8 +129,6 @@ def fetch_rss_feed(name: str, url: str) -> list[dict]:
         pub_date = item.findtext('pubDate') or ''
         description = item.findtext('description') or ''
 
-        snippet = truncate(strip_html(description), SNIPPET_LENGTH)
-
         try:
             date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z') if pub_date else datetime.now(UTC8)
         except ValueError:
@@ -96,11 +138,12 @@ def fetch_rss_feed(name: str, url: str) -> list[dict]:
                 date = datetime.now(UTC8)
 
         if title and link:
+            if 'news.google.com' in link:
+                link = decode_google_news_url(link)
             items.append({
                 'title': title,
                 'link': link,
                 'date': date,
-                'snippet': snippet,
             })
 
     return items
@@ -151,7 +194,10 @@ def main():
             if item['link'] in existing_urls:
                 continue
 
-            tags = extract_ticker_tags(item['title'] + ' ' + item['snippet'], ticker_keywords)
+            content = fetch_article_content(item['link'])
+            time.sleep(1.0)
+
+            tags = extract_ticker_tags(item['title'] + ' ' + content, ticker_keywords)
             date_str = item['date'].strftime('%Y-%m-%d %H:%M:%S')
 
             all_new.append([
@@ -159,7 +205,7 @@ def main():
                 date_str,
                 ','.join(tags),
                 item['title'],
-                item['snippet'],
+                content,
                 item['link'],
                 now,
             ])

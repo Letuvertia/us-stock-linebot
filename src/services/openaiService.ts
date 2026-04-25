@@ -32,7 +32,7 @@ function callOpenAI(systemPrompt: string, userMessage: string): string {
 function buildNewsAnalysisPrompt(ticker: string, newsItems: NewsItem[]): { system: string; user: string } {
   const newsContext = newsItems.map((n, i) => {
     const date = formatDateTW(n.date);
-    return `${i + 1}. [${date}] ${n.title}\n   摘要: ${n.snippet}\n   來源: ${n.url}`;
+    return `${i + 1}. [${date}] ${n.title}\n   內容: ${n.content}\n   來源: ${n.url}`;
   }).join('\n\n');
 
   const system = `你是一位專業的股權研究分析師 (Professional Equity Research Analyst)。

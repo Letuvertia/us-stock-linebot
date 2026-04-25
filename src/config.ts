@@ -17,7 +17,7 @@ const SHEET_NAMES = {
 } as const;
 
 const SHEET_HEADERS: Record<string, string[]> = {
-  [SHEET_NAMES.NEWS_STORE]: ['ID', 'Date', 'TickerTags', 'Title', 'Snippet', 'URL', 'Processed_At'],
+  [SHEET_NAMES.NEWS_STORE]: ['ID', 'Date', 'TickerTags', 'Title', 'Content', 'URL', 'Processed_At'],
   [SHEET_NAMES.USER_CONFIG]: ['Config_Key', 'Config_Value'],
   [SHEET_NAMES.SYSTEM_LOGS]: ['Timestamp', 'Level', 'Function', 'Message'],
   [SHEET_NAMES.STOCK_UNIVERSE]: [
@@ -58,4 +58,3 @@ const OPENAI_DELAY_MS = 4000;
 const MIN_VOLUME = 500000;
 const TOP_STOCKS_COUNT = 20;
 const NEWS_RETENTION_DAYS = 7;
-const NEWS_SNIPPET_LENGTH = 200;

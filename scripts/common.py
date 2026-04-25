@@ -31,27 +31,38 @@ def sheets_update_with_retry(sheets, range_, values, value_input='RAW', retries=
             ).execute()
             return
         except Exception as e:
-            if attempt < retries - 1 and ('429' in str(e) or 'Timeout' in str(e) or 'timed out' in str(e)):
+            if attempt < retries - 1 and _is_retryable(e):
                 wait = 30 * (attempt + 1)
-                print(f"  Sheets error ({e.__class__.__name__}), retrying in {wait}s...")
+                print(f"  Sheets error ({type(e).__name__}), retrying in {wait}s...")
                 time.sleep(wait)
             else:
                 raise
 
 
-def sheets_append_with_retry(sheets, range_, values, retries=5):
-    for attempt in range(retries):
-        try:
-            sheets.append(
-                spreadsheetId=SPREADSHEET_ID, range=range_,
-                valueInputOption='RAW', insertDataOption='INSERT_ROWS',
-                body={'values': values}
-            ).execute()
-            return
-        except Exception as e:
-            if attempt < retries - 1 and ('429' in str(e) or 'Timeout' in str(e) or 'timed out' in str(e)):
-                wait = 30 * (attempt + 1)
-                print(f"  Sheets error ({e.__class__.__name__}), retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
+RETRYABLE_ERRORS = ('429', 'Timeout', 'timed out', 'SSLEOFError', 'EOF occurred', 'ConnectionReset', 'BrokenPipe')
+
+
+def _is_retryable(e: Exception) -> bool:
+    msg = str(e)
+    return any(s in msg or s in type(e).__name__ for s in RETRYABLE_ERRORS)
+
+
+def sheets_append_with_retry(sheets, range_, values, retries=5, batch_size=50):
+    for i in range(0, len(values), batch_size):
+        chunk = values[i:i + batch_size]
+        for attempt in range(retries):
+            try:
+                sheets.append(
+                    spreadsheetId=SPREADSHEET_ID, range=range_,
+                    valueInputOption='RAW', insertDataOption='INSERT_ROWS',
+                    body={'values': chunk}
+                ).execute()
+                break
+            except Exception as e:
+                if attempt < retries - 1 and _is_retryable(e):
+                    wait = 30 * (attempt + 1)
+                    print(f"  Sheets error ({type(e).__name__}), retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+        time.sleep(2)
