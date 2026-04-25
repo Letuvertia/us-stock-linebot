@@ -4,23 +4,16 @@ Scrapes target prices + EPS estimates from MarketWatch analyst estimates pages.
 Writes to StockUniverse columns AL-AW (indices 37-48). Run once daily.
 """
 import os
+import sys
 import time
 import re
-import warnings
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
-UTC8 = timezone(timedelta(hours=8))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import UTC8, SPREADSHEET_ID, get_sheets_service, sheets_update_with_retry
 
-warnings.filterwarnings("ignore")
-
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-
-# --- Config ---
-CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', '/mnt/c/Users/1026o/Desktop/us-stock-linebot/juns-stock-agent-5f32b75f7c83.json')
-SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
 MW_BASE = 'https://www.marketwatch.com/investing/stock'
 
 COL_START = 'AL'
@@ -41,29 +34,6 @@ HEADERS = {
     'Cache-Control': 'max-age=0',
 }
 
-
-def get_sheets_service():
-    creds = service_account.Credentials.from_service_account_file(
-        CREDS_FILE, scopes=['https://www.googleapis.com/auth/spreadsheets']
-    )
-    return build('sheets', 'v4', credentials=creds, cache_discovery=False)
-
-
-def sheets_update_with_retry(sheets, range_, values, value_input='RAW', retries=5):
-    for attempt in range(retries):
-        try:
-            sheets.update(
-                spreadsheetId=SPREADSHEET_ID, range=range_,
-                valueInputOption=value_input, body={'values': values}
-            ).execute()
-            return
-        except Exception as e:
-            if attempt < retries - 1 and ('429' in str(e) or 'Timeout' in str(e) or 'timed out' in str(e)):
-                wait = 30 * (attempt + 1)
-                print(f"  Sheets error ({e.__class__.__name__}), retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
 
 
 def fetch_page(ticker: str) -> str | None:
@@ -250,7 +220,7 @@ def main():
         now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
 
         if not html:
-            row_data = [''] * 11 + [now]
+            continue
         else:
             d = parse_analyst_data(html, current_price)
             row_data = [

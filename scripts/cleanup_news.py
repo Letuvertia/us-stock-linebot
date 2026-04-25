@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
 """Daily cleanup: delete news older than 7 days from NewsStore sheet."""
 import os
+import sys
 import time
-import warnings
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
-UTC8 = timezone(timedelta(hours=8))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import UTC8, SPREADSHEET_ID, get_sheets_service
 
-warnings.filterwarnings("ignore")
-
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-
-# --- Config ---
-CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', '/mnt/c/Users/1026o/Desktop/us-stock-linebot/juns-stock-agent-5f32b75f7c83.json')
-SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
 RETENTION_DAYS = 7
-
-
-def get_sheets_service():
-    creds = service_account.Credentials.from_service_account_file(
-        CREDS_FILE, scopes=['https://www.googleapis.com/auth/spreadsheets']
-    )
-    return build('sheets', 'v4', credentials=creds, cache_discovery=False)
 
 
 def main():

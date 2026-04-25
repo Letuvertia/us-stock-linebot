@@ -1,25 +1,18 @@
 #!/usr/bin/env python3
 """Hourly RSS news collector. Fetches 9 feeds, tags tickers, writes to NewsStore sheet."""
 import os
+import sys
 import re
 import time
 import uuid
-import warnings
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
-UTC8 = timezone(timedelta(hours=8))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import UTC8, SPREADSHEET_ID, get_sheets_service, sheets_append_with_retry
 
-warnings.filterwarnings("ignore")
-
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-
-# --- Config ---
-CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', '/mnt/c/Users/1026o/Desktop/us-stock-linebot/juns-stock-agent-5f32b75f7c83.json')
-SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
 SNIPPET_LENGTH = 200
 
 RSS_FEEDS = [
@@ -40,33 +33,10 @@ HEADERS = {
 }
 
 
-def get_sheets_service():
-    creds = service_account.Credentials.from_service_account_file(
-        CREDS_FILE, scopes=['https://www.googleapis.com/auth/spreadsheets']
-    )
-    return build('sheets', 'v4', credentials=creds, cache_discovery=False)
-
-
-def sheets_append_with_retry(sheets, range_, values, retries=5):
-    for attempt in range(retries):
-        try:
-            sheets.append(
-                spreadsheetId=SPREADSHEET_ID, range=range_,
-                valueInputOption='RAW', insertDataOption='INSERT_ROWS',
-                body={'values': values}
-            ).execute()
-            return
-        except Exception as e:
-            if attempt < retries - 1 and ('429' in str(e) or 'Timeout' in str(e) or 'timed out' in str(e)):
-                wait = 30 * (attempt + 1)
-                print(f"  Sheets error ({e.__class__.__name__}), retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
-
 
 def strip_html(text: str) -> str:
-    return re.sub(r'<[^>]+>', '', text).strip()
+    import html
+    return html.unescape(re.sub(r'<[^>]+>', '', text)).strip()
 
 
 def truncate(text: str, max_len: int) -> str:

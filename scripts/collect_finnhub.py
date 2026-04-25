@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
 """Fetch Finnhub data for all tickers in StockUniverse and update Google Sheet."""
 import os
+import sys
 import time
 import json
-import warnings
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
-UTC8 = timezone(timedelta(hours=8))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import UTC8, SPREADSHEET_ID, get_sheets_service, sheets_update_with_retry
 
-warnings.filterwarnings("ignore")
-
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-
-# --- Config ---
-CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', '/mnt/c/Users/1026o/Desktop/us-stock-linebot/juns-stock-agent-5f32b75f7c83.json')
-SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
 FINNHUB_TOKEN = os.environ['FINNHUB_API_KEY']
 FINNHUB_BASE = 'https://finnhub.io/api/v1'
 RATE_LIMIT_DELAY = 1.1  # 60 calls/min = 1 call/sec + buffer
@@ -33,29 +26,6 @@ HEADER = [
     'Finnhub_Industry', 'Finnhub_Updated_At',
 ]
 
-
-def get_sheets_service():
-    creds = service_account.Credentials.from_service_account_file(
-        CREDS_FILE, scopes=['https://www.googleapis.com/auth/spreadsheets']
-    )
-    return build('sheets', 'v4', credentials=creds, cache_discovery=False)
-
-
-def sheets_update_with_retry(sheets, range_, values, value_input='USER_ENTERED', retries=5):
-    for attempt in range(retries):
-        try:
-            sheets.update(
-                spreadsheetId=SPREADSHEET_ID, range=range_,
-                valueInputOption=value_input, body={'values': values}
-            ).execute()
-            return
-        except Exception as e:
-            if attempt < retries - 1 and ('429' in str(e) or 'Timeout' in str(e) or 'timed out' in str(e)):
-                wait = 30 * (attempt + 1)
-                print(f"  Sheets error ({e.__class__.__name__}), retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
 
 
 def finnhub_get(endpoint: str, max_retries: int = 3) -> dict | list | None:
@@ -201,7 +171,7 @@ def main():
             data = [ticker, exchange, name] + [''] * 28
 
         row_num = i + 2
-        sheets_update_with_retry(sheets, f'StockUniverse!A{row_num}:AE{row_num}', [data])
+        sheets_update_with_retry(sheets, f'StockUniverse!A{row_num}:AE{row_num}', [data], value_input='USER_ENTERED')
         updated_count += 1
 
     print(f"\nUpdated {updated_count} rows in StockUniverse")
