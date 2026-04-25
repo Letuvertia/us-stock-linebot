@@ -14,7 +14,6 @@ from googlenewsdecoder import gnewsdecoder
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import UTC8, SPREADSHEET_ID, get_sheets_service, sheets_append_with_retry
 
-CONTENT_MAX_LENGTH = 2000
 
 RSS_FEEDS = [
     ('CNBC Finance', 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664', 'CNBC'),
@@ -76,7 +75,7 @@ def fetch_article_content(url: str) -> str:
             continue
         cleaned.append(t)
     text = '\n'.join(cleaned)
-    return truncate(text, CONTENT_MAX_LENGTH)
+    return text
 
 
 def extract_ticker_tags(text: str, ticker_keywords: dict[str, list[str]]) -> list[str]:
