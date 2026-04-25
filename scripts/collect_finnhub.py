@@ -58,21 +58,25 @@ def sheets_update_with_retry(sheets, range_, values, value_input='USER_ENTERED',
                 raise
 
 
-def finnhub_get(endpoint: str) -> dict | list | None:
+def finnhub_get(endpoint: str, max_retries: int = 3) -> dict | list | None:
     url = f"{FINNHUB_BASE}{endpoint}{'&' if '?' in endpoint else '?'}token={FINNHUB_TOKEN}"
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status == 200:
-                return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        if e.code == 429:
-            print(f"  Rate limited, sleeping 60s...")
-            time.sleep(60)
-            return finnhub_get(endpoint)
-        print(f"  HTTP {e.code} for {endpoint}")
-    except Exception as e:
-        print(f"  Error: {e}")
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                print(f"  Rate limited, sleeping 60s (attempt {attempt + 1}/{max_retries})...")
+                time.sleep(60)
+                continue
+            print(f"  HTTP {e.code} for {endpoint}")
+            return None
+        except Exception as e:
+            print(f"  Error: {e}")
+            return None
+    print(f"  Max retries exceeded for {endpoint}")
     return None
 
 
@@ -126,7 +130,7 @@ def fetch_ticker_data(ticker: str, exchange: str, name: str) -> list:
 
     dist_from_high = ''
     if current_price and w52_high and w52_high > 0:
-        dist_from_high = round(((w52_high - current_price) / current_price) * 100, 2)
+        dist_from_high = round(((current_price - w52_high) / w52_high) * 100, 2)
 
     pe_ttm = m.get('peTTM', '')
     forward_pe = m.get('forwardPE', '')
