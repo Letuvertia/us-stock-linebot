@@ -2,7 +2,7 @@ name: Collect yfinance Data
 
 on:
   schedule:
-    - cron: '33 22 * * 1-5'   # 6:33 AM UTC+8 weekdays (after market close)
+    - cron: '0 22 * * *'   # 6:00 AM UTC+8 daily
   workflow_dispatch:
 
 jobs:
