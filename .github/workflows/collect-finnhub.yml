@@ -2,8 +2,7 @@ name: Collect Finnhub Data
 
 on:
   schedule:
-    - cron: '15 0-11 * * *'   # Every hour except 12 UTC (20:00 UTC+8, yfinance slot)
-    - cron: '15 13-23 * * *'
+    - cron: '15 * * * *'
   workflow_dispatch:
 
 jobs:
