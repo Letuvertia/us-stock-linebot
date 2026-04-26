@@ -1,5 +1,7 @@
 """Shared utilities for news collection scripts (CNBC + Reuters)."""
+import http.cookiejar
 import os
+import random
 import re
 import time
 import urllib.request
@@ -31,14 +33,56 @@ def get_news_spreadsheet_id(source: str) -> str:
         raise ValueError(f"No spreadsheet ID found for news source '{source}' in NewsSheetIDs tab")
     return sid
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'Accept': 'application/xml, text/xml, application/rss+xml',
-}
+_USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+]
+
+_ACCEPT_LANGUAGES = [
+    'en-US,en;q=0.9',
+    'en-US,en;q=0.9,zh-TW;q=0.8',
+    'en,en-US;q=0.9',
+]
+
+_cookie_jar = http.cookiejar.CookieJar()
+_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_cookie_jar))
+
+
+def _random_ua() -> str:
+    return random.choice(_USER_AGENTS)
+
+
+def _browser_headers(accept: str = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8') -> dict:
+    return {
+        'User-Agent': _random_ua(),
+        'Accept': accept,
+        'Accept-Language': random.choice(_ACCEPT_LANGUAGES),
+        'Accept-Encoding': 'identity',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+    }
+
+
+def _human_delay(lo: float = 1.5, hi: float = 4.0):
+    time.sleep(random.uniform(lo, hi))
+
 
 BOILERPLATE_PATTERNS = re.compile(
     r'sign up for|delivered to your inbox|get more cnbc|all rights reserved|data is a real-time|'
-    r'data also provided|disclaimer|©|privacy policy|terms of service',
+    r'data also provided|disclaimer|©|privacy policy|terms of service|'
+    r'confidential news tip|we want to hear from you|subscribe to cnbc|'
+    r'read more\s*subscribe|licensing & reprints|cnbc councils|cnbc panel|'
+    r'closed captioning|corrections\s*about|site map\s*careers|'
+    r'news releases|digital products|join the cnbc|about cnbc|'
+    r'subscribe to investing club|got a confidential|'
+    r'sign up for our weekly newsletter|sign up for our daily newsletter',
     re.IGNORECASE,
 )
 
@@ -56,7 +100,7 @@ def load_ticker_keywords() -> dict[str, list[str]]:
     stock_sheets = get_sheets_service().spreadsheets().values()
     result = stock_sheets.get(
         spreadsheetId=USER_CONFIG_SPREADSHEET_ID,
-        range="'News Keywords'!A2:D"
+        range="'News Keywords'!A2:H"
     ).execute()
     rows = result.get('values', [])
     ticker_keywords: dict[str, list[str]] = {}
@@ -65,8 +109,8 @@ def load_ticker_keywords() -> dict[str, list[str]]:
             continue
         ticker = row[0]
         keywords = []
-        if len(row) > 3 and row[3].strip():
-            keywords = [k.strip() for k in row[3].split(',') if k.strip()]
+        if len(row) > 7 and row[7].strip():
+            keywords = [k.strip() for k in row[7].split(',') if k.strip()]
         ticker_keywords[ticker] = keywords
     kw_count = sum(1 for kws in ticker_keywords.values() if kws)
     print(f"Loaded {len(ticker_keywords)} tickers for tagging ({kw_count} with keywords)")
@@ -86,29 +130,55 @@ def strip_html(text: str) -> str:
     return html.unescape(re.sub(r'<[^>]+>', '', text)).strip()
 
 
+def _clean_paragraphs(raw_texts: list[str]) -> list[str]:
+    cleaned = []
+    for t in raw_texts:
+        t = strip_html(t)
+        if len(t) < 40 or BOILERPLATE_PATTERNS.search(t):
+            continue
+        if t.count(' ') < len(t) * 0.08:
+            continue
+        cleaned.append(t)
+    return cleaned
+
+
+def _extract_paragraphs(html_text: str) -> list[str]:
+    """Extract article text from HTML, trying article body first, then all <p> tags."""
+    article_match = re.search(
+        r'class="ArticleBody-articleBody"[^>]*>(.*)',
+        html_text, re.DOTALL | re.IGNORECASE,
+    )
+
+    if article_match:
+        body = article_match.group(1)
+        xyz = re.search(r'class="xyz-data"[^>]*>(.*?)</span>', body, re.DOTALL)
+        if xyz:
+            raw_text = strip_html(xyz.group(1))
+            if len(raw_text) > 200:
+                sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', raw_text)
+                return _clean_paragraphs(sentences)
+
+        paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', body, re.DOTALL | re.IGNORECASE)
+        if paragraphs:
+            return _clean_paragraphs(paragraphs)
+
+    paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html_text, re.DOTALL | re.IGNORECASE)
+    return _clean_paragraphs(paragraphs)
+
+
 def fetch_article_content(url: str) -> str:
     try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': HEADERS['User-Agent'],
-            'Accept': 'text/html,application/xhtml+xml',
-        })
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        headers = _browser_headers()
+        headers['Referer'] = 'https://www.google.com/'
+        req = urllib.request.Request(url, headers=headers)
+        with _opener.open(req, timeout=15) as resp:
             if resp.status != 200:
                 return ''
             html_text = resp.read().decode('utf-8', errors='replace')
     except Exception:
         return ''
 
-    paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html_text, re.DOTALL | re.IGNORECASE)
-    cleaned = []
-    for p in paragraphs:
-        t = strip_html(p)
-        if len(t) < 40 or BOILERPLATE_PATTERNS.search(t):
-            continue
-        if t.count(' ') < len(t) * 0.08:
-            continue
-        cleaned.append(t)
-    return '\n'.join(cleaned)
+    return '\n'.join(_extract_paragraphs(html_text))
 
 
 def extract_ticker_tags(text: str, ticker_keywords: dict[str, list[str]]) -> list[str]:
@@ -135,8 +205,9 @@ def decode_google_news_url(url: str) -> str:
 
 def fetch_rss_feed(name: str, url: str, decode_google_urls: bool = False) -> list[dict]:
     try:
-        req = urllib.request.Request(url, headers=HEADERS)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        headers = _browser_headers(accept='application/xml, text/xml, application/rss+xml, */*')
+        req = urllib.request.Request(url, headers=headers)
+        with _opener.open(req, timeout=15) as resp:
             if resp.status != 200:
                 print(f"  HTTP {resp.status}")
                 return []
@@ -182,7 +253,7 @@ def fetch_rss_feed(name: str, url: str, decode_google_urls: bool = False) -> lis
 
 
 def append_with_retry(sheets_values, spreadsheet_id: str, range_: str,
-                      values: list, retries: int = 5, batch_size: int = 50):
+                      values: list, retries: int = 5, batch_size: int = 10):
     for i in range(0, len(values), batch_size):
         chunk = values[i:i + batch_size]
         for attempt in range(retries):

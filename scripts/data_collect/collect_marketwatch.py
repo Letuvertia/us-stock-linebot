@@ -2,7 +2,9 @@
 """Daily MarketWatch analyst estimates collector. Writes to individual stock sheets.
 Scrapes target prices + EPS estimates from MarketWatch analyst estimates pages.
 """
+import http.cookiejar
 import os
+import random
 import sys
 import time
 import re
@@ -19,28 +21,55 @@ from common import (
 )
 
 MW_BASE = 'https://www.marketwatch.com/investing/stock'
-REQUEST_DELAY = float(os.environ.get('MW_REQUEST_DELAY', '8.0'))
+REQUEST_DELAY_LO = float(os.environ.get('MW_REQUEST_DELAY_LO', '6.0'))
+REQUEST_DELAY_HI = float(os.environ.get('MW_REQUEST_DELAY_HI', '12.0'))
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-    'Referer': 'https://www.google.com/',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'cross-site',
-    'Sec-Fetch-User': '?1',
-    'Upgrade-Insecure-Requests': '1',
-    'Cache-Control': 'max-age=0',
-}
+_USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+]
+
+_ACCEPT_LANGUAGES = [
+    'en-US,en;q=0.9',
+    'en-US,en;q=0.9,zh-TW;q=0.8',
+    'en,en-US;q=0.9',
+]
+
+_REFERERS = [
+    'https://www.google.com/',
+    'https://www.google.com/search?q=marketwatch',
+    'https://www.marketwatch.com/',
+]
+
+_cookie_jar = http.cookiejar.CookieJar()
+_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_cookie_jar))
+
+
+def _build_headers() -> dict:
+    return {
+        'User-Agent': random.choice(_USER_AGENTS),
+        'Referer': random.choice(_REFERERS),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': random.choice(_ACCEPT_LANGUAGES),
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+    }
 
 
 def fetch_page(ticker: str) -> str | None:
     url = f"{MW_BASE}/{ticker.lower()}/analystestimates"
-    req = urllib.request.Request(url, headers=HEADERS)
+    req = urllib.request.Request(url, headers=_build_headers())
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _opener.open(req, timeout=15) as resp:
             if resp.status == 200:
                 data = resp.read()
                 if resp.headers.get('Content-Encoding') == 'gzip':
@@ -214,7 +243,7 @@ def main():
         print(f"[{i}/{len(tickers)}] {ticker}...", end=' ', flush=True)
 
         html = fetch_page(ticker)
-        time.sleep(REQUEST_DELAY)
+        time.sleep(random.uniform(REQUEST_DELAY_LO, REQUEST_DELAY_HI))
 
         if not html:
             print()

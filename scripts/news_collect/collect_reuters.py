@@ -14,6 +14,7 @@ from news_common import (
     fetch_rss_feed, fetch_article_content, extract_ticker_tags,
     load_ticker_keywords, load_existing_urls, append_with_retry,
     get_news_sheets_service, decode_google_news_url, get_news_spreadsheet_id,
+    _human_delay,
 )
 
 REUTERS_FEEDS = [
@@ -45,7 +46,7 @@ def main():
                 continue
 
             content = fetch_article_content(item['link'])
-            time.sleep(1.0)
+            _human_delay(1.5, 4.0)
 
             tags = extract_ticker_tags(item['title'] + ' ' + content, ticker_keywords)
             date_str = item['date'].strftime('%Y-%m-%d %H:%M:%S')
@@ -63,7 +64,7 @@ def main():
             new_count += 1
 
         print(f"{len(items)} items, {new_count} new")
-        time.sleep(0.5)
+        _human_delay(1.0, 2.5)
 
     if new_rows:
         append_with_retry(sheets, reuters_sid, 'Sheet1!A:G', new_rows)
