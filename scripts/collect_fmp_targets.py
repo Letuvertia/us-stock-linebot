@@ -85,7 +85,7 @@ def main():
     uni_header_map = get_universe_header_map(sheets)
     uni_ticker_rows = get_universe_ticker_rows(sheets)
 
-    WRITE_INTERVAL = 2.0
+    WRITE_INTERVAL = 3.5
     UNIVERSE_BATCH_SIZE = 100
     last_write_time = 0.0
     universe_buffer = []
