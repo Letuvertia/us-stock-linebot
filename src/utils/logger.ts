@@ -1,5 +1,13 @@
 function _getLogSheet(): GoogleAppsScript.Spreadsheet.Sheet {
-  return getOrCreateSheet(SHEET_NAMES.SYSTEM_LOGS, SHEET_HEADERS[SHEET_NAMES.SYSTEM_LOGS]);
+  const id = getScriptProperty(PROP_KEYS.LINEBOT_LOGS_SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(id);
+  let sheet = ss.getSheetByName('Logs');
+  if (!sheet) {
+    sheet = ss.insertSheet('Logs');
+    sheet.appendRow(['Timestamp', 'Level', 'Function', 'Message']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+  }
+  return sheet;
 }
 
 function _log(level: string, functionName: string, message: string): void {
