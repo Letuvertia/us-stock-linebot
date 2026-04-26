@@ -253,3 +253,37 @@ def write_universe_row(sheets_values, ticker_rows: dict[str, int],
         return
     write_stock_data(sheets_values, SPREADSHEET_ID, row,
                      universe_header_map, data, tab_name='StockUniverse')
+
+
+def batch_write_universe(sheets_values, ticker_rows: dict[str, int],
+                         universe_header_map: dict[str, int],
+                         batch: list[tuple[str, dict]],
+                         retries: int = 5) -> None:
+    """Write multiple tickers' data to StockUniverse in one batchUpdate."""
+    all_ranges = []
+    for ticker, data in batch:
+        row = ticker_rows.get(ticker)
+        if row is None:
+            continue
+        for col_name, value in data.items():
+            idx = universe_header_map.get(col_name)
+            if idx is None:
+                continue
+            cell = f"StockUniverse!{col_letter(idx)}{row}"
+            all_ranges.append({'range': cell, 'values': [[value]]})
+    if not all_ranges:
+        return
+    for attempt in range(retries):
+        try:
+            sheets_values.batchUpdate(
+                spreadsheetId=SPREADSHEET_ID,
+                body={'valueInputOption': 'RAW', 'data': all_ranges},
+            ).execute()
+            return
+        except Exception as e:
+            if attempt < retries - 1 and _is_retryable(e):
+                wait = 30 * (attempt + 1)
+                print(f"    Universe batch write retry ({type(e).__name__}), {wait}s...")
+                time.sleep(wait)
+            else:
+                raise

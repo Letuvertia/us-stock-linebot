@@ -13,7 +13,7 @@ from common import (
     UTC8, get_sheets_service, get_stock_sheet_ids, get_header_map,
     find_or_create_today_row, write_stock_data, round_if, _is_retryable,
     get_trading_date, get_universe_ticker_rows, get_universe_header_map,
-    write_universe_row,
+    batch_write_universe,
 )
 
 FINNHUB_KEYS = [k.strip() for k in os.environ['FINNHUB_API_KEY'].split(',') if k.strip()]
@@ -271,6 +271,8 @@ def main():
     uni_ticker_rows = get_universe_ticker_rows(sheets)
     print(f"Header map: {len(header_map)} columns, Universe: {len(uni_header_map)} columns")
 
+    UNIVERSE_BATCH_SIZE = 20
+    universe_buffer = []
     updated = 0
     for i, (ticker, sid) in enumerate(sorted(sheet_ids.items()), 1):
         print(f"[{i}/{len(sheet_ids)}] {ticker}...", end=' ', flush=True)
@@ -281,12 +283,19 @@ def main():
 
             row = find_or_create_today_row(sheets, sid, today)
             write_stock_data(sheets, sid, row, header_map, data)
-            time.sleep(0.5)
-            write_universe_row(sheets, uni_ticker_rows, uni_header_map, ticker, data)
+            universe_buffer.append((ticker, data))
+            if len(universe_buffer) >= UNIVERSE_BATCH_SIZE:
+                batch_write_universe(sheets, uni_ticker_rows, uni_header_map, universe_buffer)
+                print(f"[universe batch {len(universe_buffer)} written]", flush=True)
+                universe_buffer = []
             print(f"→ row {row}")
             updated += 1
         except Exception as e:
             print(f"ERROR: {e}")
+
+    if universe_buffer:
+        batch_write_universe(sheets, uni_ticker_rows, uni_header_map, universe_buffer)
+        print(f"[universe batch {len(universe_buffer)} written]")
 
     print(f"\n[{datetime.now(UTC8)}] Done! Updated {updated}/{len(sheet_ids)} sheets")
 
