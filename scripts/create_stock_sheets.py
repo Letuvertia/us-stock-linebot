@@ -9,7 +9,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import SPREADSHEET_ID, get_sheets_service, _is_retryable
+from common import US_STOCK_SPREADSHEET_ID, get_sheets_service, _is_retryable
 
 OAUTH_TOKEN_FILE = '/tmp/oauth_token.json'
 STATE_FILE = '/tmp/create_sheets_state.json'
@@ -58,12 +58,12 @@ def main():
     sa_sheets = get_sheets_service().spreadsheets().values()
 
     # 1. Read ticker list from StockUniverse
-    result = sa_sheets.get(spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2:C').execute()
+    result = sa_sheets.get(spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2:C').execute()
     tickers = result.get('values', [])
     print(f"Loaded {len(tickers)} tickers from StockUniverse")
 
     # 2. Read column names from Data Schema
-    result = sa_sheets.get(spreadsheetId=SPREADSHEET_ID, range='Data Schema!A2:A200').execute()
+    result = sa_sheets.get(spreadsheetId=US_STOCK_SPREADSHEET_ID, range='Data Schema!A2:A200').execute()
     headers = [r[0] for r in result.get('values', []) if r]
     print(f"Header row: {len(headers)} columns (starts with {headers[0]})")
 

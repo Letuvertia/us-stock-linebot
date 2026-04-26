@@ -12,7 +12,7 @@ from googleapiclient.discovery import build
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (
-    UTC8, SPREADSHEET_ID, ROOT_FOLDER_ID,
+    UTC8, US_STOCK_SPREADSHEET_ID, ROOT_FOLDER_ID,
     get_sheets_service, get_drive_service, _is_retryable,
 )
 
@@ -216,7 +216,7 @@ def load_companies() -> dict:
 
 def load_existing_keywords(sheets_svc) -> dict:
     result = sheets_svc.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2:AX',
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2:AX',
     ).execute()
     kw = {}
     for row in result.get('values', []):
@@ -230,7 +230,7 @@ def load_existing_keywords(sheets_svc) -> dict:
 
 def load_stock_tickers(sheets_svc) -> list[dict]:
     result = sheets_svc.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2:C',
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2:C',
     ).execute()
     tickers = []
     for row in result.get('values', []):

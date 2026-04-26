@@ -26,5 +26,8 @@ jobs:
       - name: Run RSS news collector
         env:
           GOOGLE_CREDS_FILE: /tmp/gsa.json
-          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
+          CNBC_NEWS_SPREADSHEET_ID: ${{ secrets.CNBC_NEWS_SPREADSHEET_ID }}
+          REUTERS_NEWS_SPREADSHEET_ID: ${{ secrets.REUTERS_NEWS_SPREADSHEET_ID }}
+          USER_CONFIG_SPREADSHEET_ID: ${{ secrets.USER_CONFIG_SPREADSHEET_ID }}
         run: python scripts/collect_news.py

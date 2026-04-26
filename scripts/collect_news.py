@@ -12,7 +12,11 @@ from datetime import datetime, timedelta
 from googlenewsdecoder import gnewsdecoder
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import UTC8, SPREADSHEET_ID, get_sheets_service, sheets_append_with_retry
+from common import UTC8, US_STOCK_SPREADSHEET_ID, get_sheets_service, sheets_append_with_retry
+
+CNBC_NEWS_SPREADSHEET_ID = os.environ.get('CNBC_NEWS_SPREADSHEET_ID', '14yZCDkH7MCqb3YAiBp8yg5iJCkCYpWvlGmAvzoIx8uk')
+REUTERS_NEWS_SPREADSHEET_ID = os.environ.get('REUTERS_NEWS_SPREADSHEET_ID', '1Hr-5CEzZjKTh2_1xX3oclX6ngSj00EZF_6C2t7QDpqg')
+USER_CONFIG_SPREADSHEET_ID = os.environ.get('USER_CONFIG_SPREADSHEET_ID', '1rIVv2lZDrUT7bCO8iXzl5g5J_-BKA7RjusT64akZD0k')
 
 
 RSS_FEEDS = [
@@ -148,15 +152,37 @@ def fetch_rss_feed(name: str, url: str) -> list[dict]:
     return items
 
 
+def _append_with_retry(sheets, spreadsheet_id, range_, values, retries=5, batch_size=50):
+    for i in range(0, len(values), batch_size):
+        chunk = values[i:i + batch_size]
+        for attempt in range(retries):
+            try:
+                sheets.append(
+                    spreadsheetId=spreadsheet_id, range=range_,
+                    valueInputOption='RAW', insertDataOption='INSERT_ROWS',
+                    body={'values': chunk}
+                ).execute()
+                break
+            except Exception as e:
+                from common import _is_retryable
+                if attempt < retries - 1 and _is_retryable(e):
+                    wait = 30 * (attempt + 1)
+                    print(f"  Sheets error ({type(e).__name__}), retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+        time.sleep(2)
+
+
 def main():
     print(f"[{datetime.now(UTC8)}] Starting RSS news collection...")
     service = get_sheets_service()
     sheets = service.spreadsheets().values()
 
-    # 1. Read tickers (col A) and keywords (col AX) for tagging
+    # 1. Read keywords from user-config "News Keywords" tab (cols A and D)
     result = sheets.get(
-        spreadsheetId=SPREADSHEET_ID,
-        range='StockUniverse!A2:AX'
+        spreadsheetId=USER_CONFIG_SPREADSHEET_ID,
+        range="'News Keywords'!A2:D"
     ).execute()
     rows = result.get('values', [])
     ticker_keywords: dict[str, list[str]] = {}
@@ -164,24 +190,23 @@ def main():
         if not row:
             continue
         ticker = row[0]
-        kw_col = 49  # AX = index 49 (0-based from A)
         keywords = []
-        if len(row) > kw_col and row[kw_col].strip():
-            keywords = [k.strip() for k in row[kw_col].split(',') if k.strip()]
+        if len(row) > 3 and row[3].strip():
+            keywords = [k.strip() for k in row[3].split(',') if k.strip()]
         ticker_keywords[ticker] = keywords
     kw_count = sum(1 for kws in ticker_keywords.values() if kws)
     print(f"Loaded {len(ticker_keywords)} tickers for tagging ({kw_count} with keywords)")
 
-    # 2. Read existing URLs for dedup
-    result = sheets.get(
-        spreadsheetId=SPREADSHEET_ID,
-        range='NewsStore!F2:F'
-    ).execute()
-    existing_urls = set(row[0] for row in result.get('values', []) if row)
-    print(f"Found {len(existing_urls)} existing articles")
+    # 2. Read existing URLs from both news sheets for dedup
+    existing_urls = set()
+    for sid in [CNBC_NEWS_SPREADSHEET_ID, REUTERS_NEWS_SPREADSHEET_ID]:
+        result = sheets.get(spreadsheetId=sid, range='Sheet1!F2:F').execute()
+        existing_urls.update(row[0] for row in result.get('values', []) if row)
+    print(f"Found {len(existing_urls)} existing articles across CNBC + Reuters")
 
-    # 3. Fetch all RSS feeds
-    all_new = []
+    # 3. Fetch all RSS feeds, separate by source
+    cnbc_new = []
+    reuters_new = []
     now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
 
     for feed_name, feed_url, source in RSS_FEEDS:
@@ -199,7 +224,7 @@ def main():
             tags = extract_ticker_tags(item['title'] + ' ' + content, ticker_keywords)
             date_str = item['date'].strftime('%Y-%m-%d %H:%M:%S')
 
-            all_new.append([
+            row = [
                 str(uuid.uuid4()),
                 date_str,
                 ','.join(tags),
@@ -207,18 +232,25 @@ def main():
                 content,
                 item['link'],
                 now,
-            ])
+            ]
+            if source == 'CNBC':
+                cnbc_new.append(row)
+            else:
+                reuters_new.append(row)
             existing_urls.add(item['link'])
             new_count += 1
 
         print(f"{len(items)} items, {new_count} new")
         time.sleep(0.5)
 
-    # 4. Batch append to NewsStore
-    if all_new:
-        sheets_append_with_retry(sheets, 'NewsStore!A:G', all_new)
-        print(f"\nAppended {len(all_new)} new articles to NewsStore")
-    else:
+    # 4. Append to separate news spreadsheets
+    if cnbc_new:
+        _append_with_retry(sheets, CNBC_NEWS_SPREADSHEET_ID, 'Sheet1!A:G', cnbc_new)
+        print(f"\nAppended {len(cnbc_new)} new articles to CNBC News")
+    if reuters_new:
+        _append_with_retry(sheets, REUTERS_NEWS_SPREADSHEET_ID, 'Sheet1!A:G', reuters_new)
+        print(f"\nAppended {len(reuters_new)} new articles to Reuters News")
+    if not cnbc_new and not reuters_new:
         print("\nNo new articles to add")
 
     print(f"[{datetime.now(UTC8)}] Done!")

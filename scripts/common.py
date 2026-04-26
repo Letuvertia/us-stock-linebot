@@ -24,7 +24,7 @@ def get_trading_date() -> str:
     return datetime.now(US_EASTERN).strftime('%Y-%m-%d')
 
 CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'juns-stock-agent-5f32b75f7c83.json'))
-SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
+US_STOCK_SPREADSHEET_ID = os.environ.get('US_STOCK_SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
 ROOT_FOLDER_ID = '1kpHXJlv4Abb_S6J8vTSUv44FOQEzDPMu'
 CREATE_SHEETS_STATE_FILE = '/tmp/create_sheets_state.json'
 
@@ -50,7 +50,7 @@ def sheets_update_with_retry(sheets, range_, values, value_input='RAW', retries=
     for attempt in range(retries):
         try:
             sheets.update(
-                spreadsheetId=SPREADSHEET_ID, range=range_,
+                spreadsheetId=US_STOCK_SPREADSHEET_ID, range=range_,
                 valueInputOption=value_input, body={'values': values}
             ).execute()
             return
@@ -77,7 +77,7 @@ def sheets_append_with_retry(sheets, range_, values, retries=5, batch_size=50):
         for attempt in range(retries):
             try:
                 sheets.append(
-                    spreadsheetId=SPREADSHEET_ID, range=range_,
+                    spreadsheetId=US_STOCK_SPREADSHEET_ID, range=range_,
                     valueInputOption='RAW', insertDataOption='INSERT_ROWS',
                     body={'values': chunk}
                 ).execute()
@@ -116,7 +116,7 @@ def get_stock_sheet_ids() -> dict[str, str]:
             return json.load(f).get('created', {})
     sheets = get_sheets_service().spreadsheets().values()
     result = sheets.get(
-        spreadsheetId=SPREADSHEET_ID, range='SheetMapping!A2:B'
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='SheetMapping!A2:B'
     ).execute()
     return {r[0]: r[1] for r in result.get('values', []) if len(r) >= 2}
 
@@ -233,7 +233,7 @@ def api_retry(fn, *args, retries=5, **kwargs):
 def get_universe_ticker_rows(sheets_values) -> dict[str, int]:
     """Return {ticker: row_number} for StockUniverse tab."""
     result = sheets_values.get(
-        spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2:A'
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2:A'
     ).execute()
     rows = result.get('values', [])
     return {r[0]: i + 2 for i, r in enumerate(rows) if r}
@@ -241,7 +241,7 @@ def get_universe_ticker_rows(sheets_values) -> dict[str, int]:
 
 def get_universe_header_map(sheets_values) -> dict[str, int]:
     """Return {column_name: 1-based index} for StockUniverse tab."""
-    return get_header_map(sheets_values, SPREADSHEET_ID, tab_name='StockUniverse')
+    return get_header_map(sheets_values, US_STOCK_SPREADSHEET_ID, tab_name='StockUniverse')
 
 
 def write_universe_row(sheets_values, ticker_rows: dict[str, int],
@@ -251,7 +251,7 @@ def write_universe_row(sheets_values, ticker_rows: dict[str, int],
     row = ticker_rows.get(ticker)
     if row is None:
         return
-    write_stock_data(sheets_values, SPREADSHEET_ID, row,
+    write_stock_data(sheets_values, US_STOCK_SPREADSHEET_ID, row,
                      universe_header_map, data, tab_name='StockUniverse')
 
 
@@ -276,7 +276,7 @@ def batch_write_universe(sheets_values, ticker_rows: dict[str, int],
     for attempt in range(retries):
         try:
             sheets_values.batchUpdate(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=US_STOCK_SPREADSHEET_ID,
                 body={'valueInputOption': 'RAW', 'data': all_ranges},
             ).execute()
             return

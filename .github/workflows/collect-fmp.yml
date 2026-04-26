@@ -45,7 +45,7 @@ jobs:
       - name: Run FMP collector
         env:
           GOOGLE_CREDS_FILE: /tmp/gsa.json
-          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           FMP_BATCH: ${{ steps.batch.outputs.batch }}
         run: |

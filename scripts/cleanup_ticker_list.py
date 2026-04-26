@@ -11,7 +11,7 @@ from googleapiclient.discovery import build
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (
-    SPREADSHEET_ID, ROOT_FOLDER_ID,
+    US_STOCK_SPREADSHEET_ID, ROOT_FOLDER_ID,
     get_sheets_service, _is_retryable,
 )
 
@@ -158,7 +158,7 @@ def main():
 
     # Read existing keywords from StockUniverse
     result = sa_sheets.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2:AX'
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2:AX'
     ).execute()
     existing_kw = {}
     for row in result.get('values', []):
@@ -200,7 +200,7 @@ def main():
     print("\n=== Updating StockUniverse ===")
     # Read all existing data
     result = sa_sheets.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2:AX'
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2:AX'
     ).execute()
     old_rows = result.get('values', [])
     old_data = {}
@@ -232,12 +232,12 @@ def main():
 
     # Clear and rewrite
     sa_sheets.spreadsheets().values().clear(
-        spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2:AX'
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2:AX'
     ).execute()
     time.sleep(1)
 
     sa_sheets.spreadsheets().values().update(
-        spreadsheetId=SPREADSHEET_ID, range='StockUniverse!A2',
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockUniverse!A2',
         valueInputOption='RAW',
         body={'values': new_rows},
     ).execute()

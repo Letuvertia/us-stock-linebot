@@ -46,7 +46,7 @@ jobs:
       - name: Run MarketWatch collector
         env:
           GOOGLE_CREDS_FILE: /tmp/gsa.json
-          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
           MW_BATCH: ${{ steps.batch.outputs.batch }}
         run: |
           echo "Running batch: $MW_BATCH"
