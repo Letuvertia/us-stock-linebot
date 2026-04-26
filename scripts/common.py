@@ -171,7 +171,7 @@ def read_existing_row(sheets_values, spreadsheet_id: str, row_num: int,
 
 def write_stock_data(sheets_values, spreadsheet_id: str, row_num: int,
                      header_map: dict[str, int], data: dict,
-                     tab_name: str = 'Daily', retries: int = 3) -> None:
+                     tab_name: str = 'Daily', retries: int = 5) -> None:
     """Write data dict to specific columns of a row via batchUpdate.
 
     data: {column_name: value, ...}

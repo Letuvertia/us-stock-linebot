@@ -281,6 +281,7 @@ def main():
 
             row = find_or_create_today_row(sheets, sid, today)
             write_stock_data(sheets, sid, row, header_map, data)
+            time.sleep(0.5)
             write_universe_row(sheets, uni_ticker_rows, uni_header_map, ticker, data)
             print(f"→ row {row}")
             updated += 1

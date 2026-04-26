@@ -174,6 +174,7 @@ def main():
             if skipped:
                 print(f"(skip {skipped} existing)", end=' ', flush=True)
             write_stock_data(sheets, sid, row, header_map, filtered)
+            time.sleep(0.5)
             write_universe_row(sheets, uni_ticker_rows, uni_header_map, ticker, filtered)
             print(f"→ row {row}")
             updated += 1
