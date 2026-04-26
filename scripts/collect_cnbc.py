@@ -2,23 +2,17 @@
 """Hourly CNBC RSS news collector. Fetches 6 CNBC feeds, tags tickers, writes to CNBC News sheet."""
 import os
 import sys
-import re
 import time
 import uuid
-import urllib.request
-import urllib.error
-import xml.etree.ElementTree as ET
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import UTC8, _is_retryable
+from common import UTC8
 from news_common import (
     fetch_rss_feed, fetch_article_content, extract_ticker_tags,
     load_ticker_keywords, load_existing_urls, append_with_retry,
-    get_news_sheets_service,
+    get_news_sheets_service, get_news_spreadsheet_id,
 )
-
-CNBC_NEWS_SPREADSHEET_ID = os.environ.get('CNBC_NEWS_SPREADSHEET_ID', '14yZCDkH7MCqb3YAiBp8yg5iJCkCYpWvlGmAvzoIx8uk')
 
 CNBC_FEEDS = [
     ('CNBC Finance', 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664'),
@@ -32,10 +26,11 @@ CNBC_FEEDS = [
 
 def main():
     print(f"[{datetime.now(UTC8)}] Starting CNBC news collection...")
+    cnbc_sid = get_news_spreadsheet_id('CNBC')
     sheets = get_news_sheets_service().spreadsheets().values()
 
-    ticker_keywords = load_ticker_keywords(sheets)
-    existing_urls = load_existing_urls(sheets, CNBC_NEWS_SPREADSHEET_ID)
+    ticker_keywords = load_ticker_keywords()
+    existing_urls = load_existing_urls(sheets, cnbc_sid)
     print(f"Found {len(existing_urls)} existing CNBC articles")
 
     new_rows = []
@@ -72,7 +67,7 @@ def main():
         time.sleep(0.5)
 
     if new_rows:
-        append_with_retry(sheets, CNBC_NEWS_SPREADSHEET_ID, 'Sheet1!A:G', new_rows)
+        append_with_retry(sheets, cnbc_sid, 'Sheet1!A:G', new_rows)
         print(f"\nAppended {len(new_rows)} new articles to CNBC News")
     else:
         print("\nNo new CNBC articles")

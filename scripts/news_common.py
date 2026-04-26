@@ -9,7 +9,7 @@ from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-from common import UTC8, _is_retryable
+from common import UTC8, _is_retryable, get_news_sheet_ids, get_sheets_service
 
 NEWS_CREDS_FILE = os.environ.get('NEWS_CREDS_FILE', os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -18,6 +18,18 @@ NEWS_CREDS_FILE = os.environ.get('NEWS_CREDS_FILE', os.path.join(
 USER_CONFIG_SPREADSHEET_ID = os.environ.get(
     'USER_CONFIG_SPREADSHEET_ID', '1rIVv2lZDrUT7bCO8iXzl5g5J_-BKA7RjusT64akZD0k'
 )
+
+_news_sheet_ids_cache = None
+
+def get_news_spreadsheet_id(source: str) -> str:
+    """Look up a news source spreadsheet ID from NewsSheetIDs tab."""
+    global _news_sheet_ids_cache
+    if _news_sheet_ids_cache is None:
+        _news_sheet_ids_cache = get_news_sheet_ids()
+    sid = _news_sheet_ids_cache.get(source)
+    if not sid:
+        raise ValueError(f"No spreadsheet ID found for news source '{source}' in NewsSheetIDs tab")
+    return sid
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -39,8 +51,10 @@ def get_news_sheets_service():
     return build('sheets', 'v4', credentials=creds, cache_discovery=False)
 
 
-def load_ticker_keywords(sheets_values) -> dict[str, list[str]]:
-    result = sheets_values.get(
+def load_ticker_keywords() -> dict[str, list[str]]:
+    """Load ticker keywords from user-config sheet (uses stock service account)."""
+    stock_sheets = get_sheets_service().spreadsheets().values()
+    result = stock_sheets.get(
         spreadsheetId=USER_CONFIG_SPREADSHEET_ID,
         range="'News Keywords'!A2:D"
     ).execute()

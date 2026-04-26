@@ -109,14 +109,23 @@ def col_letter(n: int) -> str:
 def get_stock_sheet_ids() -> dict[str, str]:
     """Return {ticker: spreadsheet_id} mapping.
 
-    Reads from local state file (dev) or SheetMapping tab (GitHub Actions).
+    Reads from local state file (dev) or StockSheetIDs tab.
     """
     if os.path.exists(CREATE_SHEETS_STATE_FILE):
         with open(CREATE_SHEETS_STATE_FILE) as f:
             return json.load(f).get('created', {})
     sheets = get_sheets_service().spreadsheets().values()
     result = sheets.get(
-        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='SheetMapping!A2:B'
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='StockSheetIDs!A2:B'
+    ).execute()
+    return {r[0]: r[1] for r in result.get('values', []) if len(r) >= 2}
+
+
+def get_news_sheet_ids() -> dict[str, str]:
+    """Return {source_name: spreadsheet_id} from NewsSheetIDs tab."""
+    sheets = get_sheets_service().spreadsheets().values()
+    result = sheets.get(
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='NewsSheetIDs!A2:B'
     ).execute()
     return {r[0]: r[1] for r in result.get('values', []) if len(r) >= 2}
 

@@ -21,11 +21,13 @@ jobs:
         run: pip install google-auth google-api-python-client
 
       - name: Write service account credentials
-        run: echo '${{ secrets.NEWS_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa-news.json
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa.json
+          echo '${{ secrets.NEWS_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa-news.json
 
       - name: Run CNBC news collector
         env:
+          GOOGLE_CREDS_FILE: /tmp/gsa.json
           NEWS_CREDS_FILE: /tmp/gsa-news.json
-          USER_CONFIG_SPREADSHEET_ID: ${{ secrets.USER_CONFIG_SPREADSHEET_ID }}
-          CNBC_NEWS_SPREADSHEET_ID: ${{ secrets.CNBC_NEWS_SPREADSHEET_ID }}
+          US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
         run: python scripts/collect_cnbc.py
