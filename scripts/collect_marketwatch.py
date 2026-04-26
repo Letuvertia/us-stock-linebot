@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Daily MarketWatch analyst estimates collector.
+"""Daily MarketWatch analyst estimates collector. Writes to individual stock sheets.
 Scrapes target prices + EPS estimates from MarketWatch analyst estimates pages.
-Writes to StockUniverse columns AL-AW (indices 37-48). Run once daily.
 """
 import os
 import sys
@@ -12,12 +11,14 @@ import urllib.error
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import UTC8, SPREADSHEET_ID, get_sheets_service, sheets_update_with_retry
+from common import (
+    UTC8, get_sheets_service, get_stock_sheet_ids, get_header_map,
+    find_or_create_today_row, write_stock_data, _is_retryable,
+    get_trading_date, get_universe_ticker_rows, get_universe_header_map,
+    write_universe_row,
+)
 
 MW_BASE = 'https://www.marketwatch.com/investing/stock'
-
-COL_START = 'AL'
-COL_END = 'AW'
 REQUEST_DELAY = float(os.environ.get('MW_REQUEST_DELAY', '8.0'))
 
 HEADERS = {
@@ -35,7 +36,6 @@ HEADERS = {
 }
 
 
-
 def fetch_page(ticker: str) -> str | None:
     url = f"{MW_BASE}/{ticker.lower()}/analystestimates"
     req = urllib.request.Request(url, headers=HEADERS)
@@ -49,13 +49,13 @@ def fetch_page(ticker: str) -> str | None:
                 return data.decode()
     except urllib.error.HTTPError as e:
         if e.code == 403:
-            print(f"blocked")
+            print("blocked", end=' ')
         elif e.code == 404:
-            print(f"no page")
+            print("no page", end=' ')
         else:
-            print(f"HTTP {e.code}")
+            print(f"HTTP {e.code}", end=' ')
     except Exception as e:
-        print(f"error: {e}")
+        print(f"error: {e}", end=' ')
     return None
 
 
@@ -89,73 +89,68 @@ def _find_summary_val(rows: list[list[str]], label: str) -> str | None:
 def parse_analyst_data(html: str, current_price: float) -> dict:
     tables = re.findall(r'<table[^>]*>(.*?)</table>', html, re.DOTALL)
     result = {
-        'target_high': None, 'target_low': None, 'target_median': None,
-        'target_avg': None, 'num_ratings': None, 'upside_pct': None,
-        'eps_fy1_avg': None, 'eps_fy2_avg': None,
-        'eps_lq_est': None, 'eps_lq_act': None, 'eps_lq_surprise': None,
+        'MW_Target_High': '', 'MW_Target_Low': '', 'MW_Target_Median': '',
+        'MW_Target_Avg': '', 'MW_Num_Ratings': '', 'MW_Upside_Pct': '',
+        'MW_EPS_FY1_Avg': '', 'MW_EPS_FY2_Avg': '',
+        'MW_EPS_LQ_Est': '', 'EPS_LQ_Act': '', 'EPS_LQ_Surprise': '',
     }
 
     if len(tables) < 7:
         return result
 
-    # Table 4 (index 3): Summary — Average Target Price, Number Of Ratings
+    # Table 4 (index 3): Summary
     t4_rows = _get_table_rows(tables[3])
     target_avg_str = _find_summary_val(t4_rows, 'Average Target Price')
     num_ratings_str = _find_summary_val(t4_rows, 'Number Of Ratings')
 
-    if target_avg_str:
-        result['target_avg'] = _parse_num(target_avg_str)
+    target_avg = _parse_num(target_avg_str) if target_avg_str else None
+    if target_avg is not None:
+        result['MW_Target_Avg'] = target_avg
     if num_ratings_str:
-        result['num_ratings'] = _parse_num(num_ratings_str)
+        v = _parse_num(num_ratings_str)
+        if v is not None:
+            result['MW_Num_Ratings'] = int(v)
 
-    # Table 5 (index 4): Target price range — High, Median, Low, Average
+    # Table 5 (index 4): Target price range
     t5_rows = _get_table_rows(tables[4])
     for cells in t5_rows:
         if len(cells) >= 2:
             label = cells[0].lower()
             val = _parse_num(cells[1])
+            if val is None:
+                continue
             if 'high' in label:
-                result['target_high'] = val
+                result['MW_Target_High'] = val
             elif 'median' in label:
-                result['target_median'] = val
+                result['MW_Target_Median'] = val
             elif 'low' in label and 'current' not in label:
-                result['target_low'] = val
+                result['MW_Target_Low'] = val
 
-    # Sanity check: if target_avg is wildly different from current_price,
-    # MarketWatch might be showing local-currency data (e.g. TSM in TWD)
-    if result['target_avg'] and current_price > 0:
-        ratio = result['target_avg'] / current_price
+    # Currency sanity check
+    if target_avg and current_price > 0:
+        ratio = target_avg / current_price
         if ratio > 5 or ratio < 0.2:
-            # Likely currency mismatch — skip target prices
-            result['target_high'] = None
-            result['target_low'] = None
-            result['target_median'] = None
-            result['target_avg'] = None
-            result['num_ratings'] = None
+            result['MW_Target_High'] = ''
+            result['MW_Target_Low'] = ''
+            result['MW_Target_Median'] = ''
+            result['MW_Target_Avg'] = ''
+            result['MW_Num_Ratings'] = ''
 
     # Calculate upside
-    if result['target_avg'] and current_price > 0:
-        result['upside_pct'] = round(((result['target_avg'] - current_price) / current_price) * 100, 2)
+    if result['MW_Target_Avg'] and current_price > 0:
+        result['MW_Upside_Pct'] = round(
+            ((result['MW_Target_Avg'] - current_price) / current_price) * 100, 2
+        )
 
     # Table 6 (index 5): Annual EPS estimates
-    # Row 0: ['', '2026', '2027', '2028', '2029']
-    # Row 3: ['Average', '4.69', '8.15', '10.77', '13.24']
     t6_rows = _get_table_rows(tables[5])
-    avg_row = None
     for cells in t6_rows:
         if len(cells) >= 3 and cells[0].lower() == 'average':
-            avg_row = cells
+            result['MW_EPS_FY1_Avg'] = _parse_num(cells[1]) if len(cells) > 1 else ''
+            result['MW_EPS_FY2_Avg'] = _parse_num(cells[2]) if len(cells) > 2 else ''
             break
-    if avg_row and len(avg_row) >= 3:
-        result['eps_fy1_avg'] = _parse_num(avg_row[1]) if len(avg_row) > 1 else None
-        result['eps_fy2_avg'] = _parse_num(avg_row[2]) if len(avg_row) > 2 else None
 
-    # Table 7 (index 6): Quarterly EPS actual vs estimate
-    # Row 0: ['', 'Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026']
-    # Row 1: ['Estimate', ...]
-    # Row 2: ['Actual', ...]
-    # Row 3: ['Surprise', ...]
-    # We want the LAST column (most recent completed quarter)
+    # Table 7 (index 6): Quarterly EPS
     t7_rows = _get_table_rows(tables[6])
     est_row = act_row = surp_row = None
     for cells in t7_rows:
@@ -169,11 +164,16 @@ def parse_analyst_data(html: str, current_price: float) -> dict:
                 surp_row = cells
 
     if est_row and len(est_row) >= 2:
-        result['eps_lq_est'] = _parse_num(est_row[-1])
+        result['MW_EPS_LQ_Est'] = _parse_num(est_row[-1]) or ''
     if act_row and len(act_row) >= 2:
-        result['eps_lq_act'] = _parse_num(act_row[-1])
+        result['EPS_LQ_Act'] = _parse_num(act_row[-1]) or ''
     if surp_row and len(surp_row) >= 2:
-        result['eps_lq_surprise'] = _parse_num(surp_row[-1])
+        result['EPS_LQ_Surprise'] = _parse_num(surp_row[-1]) or ''
+
+    # Clean None→''
+    for k, v in result.items():
+        if v is None:
+            result[k] = ''
 
     return result
 
@@ -181,74 +181,76 @@ def parse_analyst_data(html: str, current_price: float) -> dict:
 def main():
     batch = os.environ.get('MW_BATCH', '')
 
-    print(f"[{datetime.now(UTC8)}] Starting MarketWatch analyst data collection (batch={batch or 'all'})...")
-    service = get_sheets_service()
-    sheets = service.spreadsheets().values()
+    print(f"[{datetime.now(UTC8)}] Starting MarketWatch collection (batch={batch or 'all'})...")
 
-    result = sheets.get(
-        spreadsheetId=SPREADSHEET_ID,
-        range='StockUniverse!A2:D'
-    ).execute()
-    rows = result.get('values', [])
-    total = len(rows)
-    print(f"Found {total} tickers")
+    sheet_ids = get_stock_sheet_ids()
+    if not sheet_ids:
+        print("ERROR: No stock sheet IDs found.")
+        return
+
+    tickers = sorted(sheet_ids.keys())
+    total = len(tickers)
+    print(f"Loaded {total} stock sheet mappings")
 
     if batch == 'first':
-        print(f"Batch: first 250 tickers (1-250)")
+        tickers = tickers[:250]
+        print("Batch: first 250 tickers")
     elif batch == 'second':
-        print(f"Batch: last {total - 250} tickers (251-{total})")
+        tickers = tickers[250:]
+        print(f"Batch: last {len(tickers)} tickers")
 
-    updated_count = 0
-    for i, row in enumerate(rows):
-        if batch == 'first' and i >= 250:
-            break
-        if batch == 'second' and i < 250:
-            continue
+    service = get_sheets_service()
+    sheets = service.spreadsheets().values()
+    today = get_trading_date()
 
-        ticker = row[0] if len(row) > 0 else ''
-        current_price = float(row[3]) if len(row) > 3 and row[3] else 0
-        row_num = i + 2
+    first_sid = sheet_ids[tickers[0]]
+    header_map = get_header_map(sheets, first_sid)
+    uni_header_map = get_universe_header_map(sheets)
+    uni_ticker_rows = get_universe_ticker_rows(sheets)
 
-        if not ticker:
-            continue
-
-        print(f"[{i+1}/{total}] {ticker}...", end=' ')
+    updated = 0
+    for i, ticker in enumerate(tickers, 1):
+        sid = sheet_ids[ticker]
+        print(f"[{i}/{len(tickers)}] {ticker}...", end=' ', flush=True)
 
         html = fetch_page(ticker)
         time.sleep(REQUEST_DELAY)
 
-        now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
-
         if not html:
+            print()
             continue
+
+        # Get current price from sheet for upside calc
+        current_price = 0
+        try:
+            result = sheets.get(
+                spreadsheetId=sid, range='Daily!J2:J'
+            ).execute()
+            price_rows = result.get('values', [])
+            if price_rows:
+                current_price = float(price_rows[-1][0])
+        except Exception:
+            pass
+
+        data = parse_analyst_data(html, current_price)
+        data['MW_Updated_At'] = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
+
+        target = data.get('MW_Target_Avg', '')
+        upside = data.get('MW_Upside_Pct', '')
+        if target:
+            print(f"target=${target} upside={upside}%")
         else:
-            d = parse_analyst_data(html, current_price)
-            row_data = [
-                d['target_high'] if d['target_high'] is not None else '',
-                d['target_low'] if d['target_low'] is not None else '',
-                d['target_median'] if d['target_median'] is not None else '',
-                d['target_avg'] if d['target_avg'] is not None else '',
-                d['num_ratings'] if d['num_ratings'] is not None else '',
-                d['upside_pct'] if d['upside_pct'] is not None else '',
-                d['eps_fy1_avg'] if d['eps_fy1_avg'] is not None else '',
-                d['eps_fy2_avg'] if d['eps_fy2_avg'] is not None else '',
-                d['eps_lq_est'] if d['eps_lq_est'] is not None else '',
-                d['eps_lq_act'] if d['eps_lq_act'] is not None else '',
-                d['eps_lq_surprise'] if d['eps_lq_surprise'] is not None else '',
-                now,
-            ]
-            target = d['target_avg']
-            upside = d['upside_pct']
-            if target:
-                print(f"target=${target} upside={upside}% analysts={d['num_ratings']}")
-            else:
-                print(f"no target (EPS FY1={d['eps_fy1_avg']})")
+            print(f"no target (EPS FY1={data.get('MW_EPS_FY1_Avg', '')})")
 
-        sheets_update_with_retry(sheets, f'StockUniverse!{COL_START}{row_num}:{COL_END}{row_num}', [row_data])
-        updated_count += 1
+        try:
+            row = find_or_create_today_row(sheets, sid, today)
+            write_stock_data(sheets, sid, row, header_map, data)
+            write_universe_row(sheets, uni_ticker_rows, uni_header_map, ticker, data)
+            updated += 1
+        except Exception as e:
+            print(f"WRITE ERROR: {e}")
 
-    print(f"\nUpdated {updated_count} rows with MarketWatch data")
-    print(f"[{datetime.now(UTC8)}] Done!")
+    print(f"\n[{datetime.now(UTC8)}] Done! Updated {updated}/{len(tickers)} sheets")
 
 
 if __name__ == '__main__':
