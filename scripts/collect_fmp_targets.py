@@ -15,7 +15,7 @@ from common import (
     UTC8, get_sheets_service, get_stock_sheet_ids, get_header_map,
     find_or_create_today_row, write_stock_data, round_if, _is_retryable,
     get_trading_date, get_universe_ticker_rows, get_universe_header_map,
-    write_universe_row,
+    batch_write_universe,
 )
 
 FMP_KEYS = [k.strip() for k in os.environ['FMP_API_KEY'].split(',') if k.strip()]
@@ -85,7 +85,12 @@ def main():
     uni_header_map = get_universe_header_map(sheets)
     uni_ticker_rows = get_universe_ticker_rows(sheets)
 
+    WRITE_INTERVAL = 2.0
+    UNIVERSE_BATCH_SIZE = 100
+    last_write_time = 0.0
+    universe_buffer = []
     updated = 0
+
     for i, ticker in enumerate(tickers, 1):
         sid = sheet_ids[ticker]
         print(f"[{i}/{len(tickers)}] {ticker}...", end=' ', flush=True)
@@ -94,44 +99,65 @@ def main():
 
         now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
 
-        if not fmp_data or len(fmp_data) == 0:
+        has_data = fmp_data and len(fmp_data) > 0
+
+        if not has_data:
             print("no target data")
-            data = {'FMP_Updated_At': now}
-        else:
-            d = fmp_data[0]
-            target_consensus = d.get('targetConsensus', '')
+            universe_buffer.append((ticker, {'FMP_Updated_At': now}))
+            continue
 
-            upside = ''
-            try:
-                result = sheets.get(
-                    spreadsheetId=sid, range='Daily!J2:J'
-                ).execute()
-                price_rows = result.get('values', [])
-                if price_rows:
-                    last_price = float(price_rows[-1][0])
-                    if target_consensus and last_price > 0:
-                        upside = round(((target_consensus - last_price) / last_price) * 100, 2)
-            except Exception:
-                pass
+        d = fmp_data[0]
+        target_consensus = d.get('targetConsensus', '')
 
-            data = {
-                'FMP_Target_High': d.get('targetHigh', ''),
-                'FMP_Target_Low': d.get('targetLow', ''),
-                'FMP_Target_Consensus': target_consensus,
-                'FMP_Target_Median': d.get('targetMedian', ''),
-                'FMP_Upside_Pct': upside,
-                'FMP_Updated_At': now,
-            }
-            print(f"consensus=${target_consensus} upside={upside}%")
+        upside = ''
+        try:
+            result = sheets.get(
+                spreadsheetId=sid, range='Daily!J2:J'
+            ).execute()
+            price_rows = result.get('values', [])
+            if price_rows:
+                last_price = float(price_rows[-1][0])
+                if target_consensus and last_price > 0:
+                    upside = round(((target_consensus - last_price) / last_price) * 100, 2)
+        except Exception:
+            pass
+
+        data = {
+            'FMP_Target_High': d.get('targetHigh', ''),
+            'FMP_Target_Low': d.get('targetLow', ''),
+            'FMP_Target_Consensus': target_consensus,
+            'FMP_Target_Median': d.get('targetMedian', ''),
+            'FMP_Upside_Pct': upside,
+            'FMP_Updated_At': now,
+        }
+        print(f"consensus=${target_consensus} upside={upside}%", end=' ', flush=True)
+
+        elapsed = time.monotonic() - last_write_time
+        if elapsed < WRITE_INTERVAL:
+            time.sleep(WRITE_INTERVAL - elapsed)
 
         try:
             row = find_or_create_today_row(sheets, sid, today)
             write_stock_data(sheets, sid, row, header_map, data)
-            time.sleep(0.5)
-            write_universe_row(sheets, uni_ticker_rows, uni_header_map, ticker, data)
+            last_write_time = time.monotonic()
+            universe_buffer.append((ticker, data))
+            print(f"→ row {row}")
             updated += 1
         except Exception as e:
             print(f"WRITE ERROR: {e}")
+
+        if len(universe_buffer) >= UNIVERSE_BATCH_SIZE:
+            batch_write_universe(sheets, uni_ticker_rows, uni_header_map, universe_buffer)
+            last_write_time = time.monotonic()
+            print(f"  [universe batch {len(universe_buffer)} written]", flush=True)
+            universe_buffer = []
+
+    if universe_buffer:
+        elapsed = time.monotonic() - last_write_time
+        if elapsed < WRITE_INTERVAL:
+            time.sleep(WRITE_INTERVAL - elapsed)
+        batch_write_universe(sheets, uni_ticker_rows, uni_header_map, universe_buffer)
+        print(f"  [universe batch {len(universe_buffer)} written]")
 
     print(f"\n[{datetime.now(UTC8)}] Done! Updated {updated}/{len(tickers)} sheets")
 
