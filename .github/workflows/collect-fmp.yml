@@ -50,4 +50,4 @@ jobs:
           FMP_BATCH: ${{ steps.batch.outputs.batch }}
         run: |
           echo "Running batch: $FMP_BATCH"
-          python scripts/collect_fmp_targets.py
+          python scripts/data_collect/collect_fmp_targets.py

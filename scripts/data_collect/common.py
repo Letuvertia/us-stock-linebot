@@ -23,7 +23,8 @@ def get_trading_date() -> str:
     """
     return datetime.now(US_EASTERN).strftime('%Y-%m-%d')
 
-CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'juns-stock-agent-5f32b75f7c83.json'))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', os.path.join(_REPO_ROOT, 'juns-stock-agent-5f32b75f7c83.json'))
 US_STOCK_SPREADSHEET_ID = os.environ.get('US_STOCK_SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
 ROOT_FOLDER_ID = '1kpHXJlv4Abb_S6J8vTSUv44FOQEzDPMu'
 CREATE_SHEETS_STATE_FILE = '/tmp/create_sheets_state.json'

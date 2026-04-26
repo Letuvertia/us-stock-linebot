@@ -30,4 +30,4 @@ jobs:
           GOOGLE_CREDS_FILE: /tmp/gsa.json
           NEWS_CREDS_FILE: /tmp/gsa-news.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
-        run: python scripts/collect_reuters.py
+        run: python scripts/news_collect/collect_reuters.py

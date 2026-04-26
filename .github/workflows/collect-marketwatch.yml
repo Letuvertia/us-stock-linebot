@@ -50,4 +50,4 @@ jobs:
           MW_BATCH: ${{ steps.batch.outputs.batch }}
         run: |
           echo "Running batch: $MW_BATCH"
-          python scripts/collect_marketwatch.py
+          python scripts/data_collect/collect_marketwatch.py

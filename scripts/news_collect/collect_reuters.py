@@ -6,7 +6,9 @@ import time
 import uuid
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _dir)
+sys.path.insert(0, os.path.join(os.path.dirname(_dir), 'data_collect'))
 from common import UTC8
 from news_common import (
     fetch_rss_feed, fetch_article_content, extract_ticker_tags,

@@ -28,4 +28,4 @@ jobs:
           GOOGLE_CREDS_FILE: /tmp/gsa.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-        run: python scripts/collect_finnhub.py
+        run: python scripts/data_collect/collect_finnhub.py

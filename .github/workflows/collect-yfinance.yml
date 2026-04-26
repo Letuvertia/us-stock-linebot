@@ -27,4 +27,4 @@ jobs:
         env:
           GOOGLE_CREDS_FILE: /tmp/gsa.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
-        run: python scripts/collect_yfinance.py
+        run: python scripts/data_collect/collect_yfinance.py
