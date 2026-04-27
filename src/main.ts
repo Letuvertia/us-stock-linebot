@@ -18,6 +18,12 @@ function runPostMarketScan(): void {
   });
 }
 
+function runIndustryPeReport(): void {
+  withErrorHandling('runIndustryPeReport', () => {
+    executeIndustryPeReport();
+  });
+}
+
 // ===== Trigger Setup (run manually in GAS editor) =====
 
 function installTriggers(): void {
