@@ -2,7 +2,7 @@ name: Collect Finnhub Data
 
 on:
   schedule:
-    - cron: '15 0-5,9-23 * * *'  # Skip 06,07,08 UTC (14-16 UTC+8) for FMP/yfinance/MW
+    - cron: '15 0-4,10-23 * * *'  # Skip 05-09 UTC (13-17 UTC+8) for FMP/yfinance/MW
   workflow_dispatch:
 
 jobs:

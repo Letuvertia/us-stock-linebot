@@ -41,23 +41,50 @@ interface StockCandidate {
   updatedAt: string;
 }
 
-// Column indices in StockUniverse sheet (0-based)
+// Column indices in StockUniverse sheet (0-based, matches 173-col schema)
 const COL = {
   TICKER: 0, EXCHANGE: 1, NAME: 2,
-  PRICE: 3, CHANGE: 4, OPEN: 5, HIGH: 6, LOW: 7, PREV_CLOSE: 8,
-  W52_HIGH: 9, W52_LOW: 10, DIST_HIGH: 11,
-  STRONG_BUY: 12, BUY: 13, HOLD: 14, SELL: 15, STRONG_SELL: 16, RATING: 17,
-  PE: 18, FWD_PE: 19, PEG: 20, EPS: 21, EPS_GROWTH: 22,
-  BETA: 23, MCAP: 24, DIV_YIELD: 25,
-  OP_MARGIN: 26, NET_MARGIN: 27, ROE: 28,
-  INDUSTRY: 29, UPDATED: 30,
-  TARGET_HIGH: 31, TARGET_LOW: 32, TARGET_CONSENSUS: 33, TARGET_MEDIAN: 34, UPSIDE: 35,
-  FMP_UPDATED: 36,
-  MW_TARGET_HIGH: 37, MW_TARGET_LOW: 38, MW_TARGET_MEDIAN: 39, MW_TARGET_AVG: 40,
-  MW_NUM_RATINGS: 41, MW_UPSIDE: 42,
-  MW_EPS_FY1: 43, MW_EPS_FY2: 44,
-  MW_EPS_LQ_EST: 45, MW_EPS_LQ_ACT: 46, MW_EPS_LQ_SURPRISE: 47,
-  MW_UPDATED: 48,
+  PRICE: 12,       // Current_Price
+  CHANGE: 13,      // Change_Pct
+  PREV_CLOSE: 14,  // Prev_Close
+  W52_HIGH: 15,    // 52W_High
+  W52_LOW: 17,     // 52W_Low
+  DIST_HIGH: 19,   // Dist_From_High_Pct
+  BETA: 33,        // Beta
+  PE: 41,          // PE_TTM
+  EPS: 50,         // EPS_TTM
+  EPS_GROWTH: 53,  // EPS_Growth_TTM_YoY
+  DIV_YIELD: 102,  // Dividend_Yield
+  OP_MARGIN: 72,   // Operating_Margin
+  NET_MARGIN: 74,  // Net_Margin
+  ROE: 79,         // ROE
+  MCAP: 109,       // Market_Cap_M
+  EPS_LQ_ACT: 122,      // EPS_LQ_Act
+  EPS_LQ_SURPRISE: 123, // EPS_LQ_Surprise
+  INDUSTRY: 124,   // Industry
+  UPDATED: 137,    // MW_Updated_At
+  FWD_PE: 139,     // Finnhub_Forward_PE
+  PEG: 141,        // Finnhub_PEG
+  STRONG_BUY: 146, // Finnhub_StrongBuy
+  BUY: 147,        // Finnhub_Buy
+  HOLD: 148,       // Finnhub_Hold
+  SELL: 149,       // Finnhub_Sell
+  STRONG_SELL: 150,// Finnhub_StrongSell
+  RATING: 151,     // Finnhub_Rating_Score
+  MW_NUM_RATINGS: 154,    // MW_Num_Ratings
+  TARGET_HIGH: 159,       // FMP_Target_High
+  TARGET_LOW: 160,        // FMP_Target_Low
+  TARGET_CONSENSUS: 161,  // FMP_Target_Consensus
+  TARGET_MEDIAN: 162,     // FMP_Target_Median
+  UPSIDE: 163,            // FMP_Upside_Pct
+  MW_TARGET_HIGH: 164,    // MW_Target_High
+  MW_TARGET_LOW: 165,     // MW_Target_Low
+  MW_TARGET_MEDIAN: 166,  // MW_Target_Median
+  MW_TARGET_AVG: 167,     // MW_Target_Avg
+  MW_UPSIDE: 168,         // MW_Upside_Pct
+  MW_EPS_FY1: 169,        // MW_EPS_FY1_Avg
+  MW_EPS_FY2: 170,        // MW_EPS_FY2_Avg
+  MW_EPS_LQ_EST: 171,     // MW_EPS_LQ_Est
 } as const;
 
 function _num(row: unknown[], idx: number): number | null {
@@ -113,8 +140,8 @@ function loadStocksFromSheet(): StockCandidate[] {
       mwEpsFY1: _num(row, COL.MW_EPS_FY1),
       mwEpsFY2: _num(row, COL.MW_EPS_FY2),
       mwEpsLQEst: _num(row, COL.MW_EPS_LQ_EST),
-      mwEpsLQAct: _num(row, COL.MW_EPS_LQ_ACT),
-      mwEpsLQSurprise: _num(row, COL.MW_EPS_LQ_SURPRISE),
+      mwEpsLQAct: _num(row, COL.EPS_LQ_ACT),
+      mwEpsLQSurprise: _num(row, COL.EPS_LQ_SURPRISE),
       updatedAt: String(row[COL.UPDATED] || ''),
     });
   }
@@ -220,4 +247,27 @@ function formatStockRanking(stocks: StockCandidate[]): string {
   msg += `資料更新: ${stocks[0]?.updatedAt || 'N/A'}\n`;
   msg += `共 ${stocks.length} 檔符合條件 (評等≥中立 且 目標價有上漲空間)`;
   return msg;
+}
+
+function executeStockScan(label: string): void {
+  const fnName = 'executeStockScan';
+  logInfo(fnName, `Starting ${label} scan`);
+
+  const candidates = loadStocksFromSheet();
+  if (candidates.length === 0) {
+    logWarn(fnName, 'No stock data in StockUniverse (run data collector first)');
+    return;
+  }
+
+  logInfo(fnName, `Loaded ${candidates.length} stocks from sheet`);
+
+  const ranked = rankStocks(candidates);
+  if (ranked.length === 0) {
+    logWarn(fnName, 'No stocks passed filtering criteria');
+    return;
+  }
+
+  const message = formatStockRanking(ranked);
+  sendPushMessage(message);
+  logInfo(fnName, `Pushed top ${ranked.length} stocks to LINE`);
 }

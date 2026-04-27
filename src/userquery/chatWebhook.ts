@@ -17,6 +17,7 @@ function handleWebhook(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
 
       logInfo(fnName, `Received query: ${truncate(userMessage, 50)}`);
 
+      // TODO: implement command dispatch
       const reactions = [
         '(歪頭)', '(搖尾巴)', '(發呆)', '(打哈欠)', '(聞聞)',
         '(翻肚皮)', '(轉圈圈)', '(趴下)', '(伸懶腰)', '(抓耳朵)',
@@ -25,8 +26,7 @@ function handleWebhook(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
       const a = reactions[Math.floor(Math.random() * reactions.length)];
       let b = reactions[Math.floor(Math.random() * reactions.length)];
       while (b === a) b = reactions[Math.floor(Math.random() * reactions.length)];
-      const fallback = `${a} ${b}`;
-      const reply = withErrorHandling(fnName, () => handleChatQuery(userMessage), fallback);
+      const reply = `${a} ${b}`;
       if (reply && event.replyToken) {
         sendReplyMessage(event.replyToken, reply);
       }

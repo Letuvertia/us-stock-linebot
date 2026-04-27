@@ -28,50 +28,61 @@ Python collectors (GitHub Actions / cron)
 
 ### GAS TypeScript (`src/`)
 
-Compiles with `module: "None"` — all functions share global scope (GAS requirement). No imports/exports.
+Compiles with `module: "None"` — all functions share global scope (GAS requirement). No imports/exports. GAS is **read-only** from Sheets; Python collectors own all writes.
 
-- **`main.ts`** — Entry points: `doPost()` (webhook), `runPreMarketScan()`, `runPostMarketScan()`, `runNewsAnalysis()` (disabled), `installTriggers()`
-- **`modules/moduleA.ts`** — Stock scanner: loads StockUniverse, ranks by upside, pushes top 20 to LINE
-- **`modules/moduleB.ts`** — News analysis via OpenAI (disabled due to free tier limits)
-- **`modules/moduleC.ts`** — Webhook chat handler: responds to @mentions using OpenAI
-- **`services/geminiService.ts`** — Despite filename, uses **OpenAI GPT-4o-mini**. Contains `callOpenAI()`, prompt builders, chat handler
-- **`services/stockService.ts`** — Stock ranking logic, `formatStockRanking()` with 皮皮 flavor text (random road + location)
-- **`services/lineService.ts`** — LINE webhook verification, message send/reply with chunking
-- **`services/sheetService.ts`** — Google Sheets CRUD helpers
-- **`services/newsService.ts`** — `getNewsForTicker()` reads from NewsStore
-- **`config.ts`** — API URLs, sheet names/headers, script property keys, constants
+- **`main.ts`** — Entry points: `doPost()` (webhook), `runPreMarketScan()`, `runPostMarketScan()`, `installTriggers()` (inline trigger setup)
+- **`report/targetPriceRank.ts`** — Stock ranking: `loadStocksFromSheet()`, `rankStocks()`, `formatStockRanking()`, `executeStockScan()`. Reads StockUniverse, ranks by analyst upside, pushes top 20 to LINE with 皮皮 flavor text
+- **`userquery/chatWebhook.ts`** — `handleWebhook()`: parses LINE webhook, detects @mentions, placeholder for command dispatch (TODO)
+- **`util/line.ts`** — `parseWebhookEvents()`, `isBotMentioned()`, `extractUserMessage()`, `sendReplyMessage()`, `sendPushMessage()`, `splitLongMessage()`
+- **`util/sheets.ts`** — Read-only Sheets helpers: `getAllRows()`, `getConfigValue()`, `getWatchlist()`, `getAllTickers()`
+- **`util/helpers.ts`** — `getScriptProperty()`, `retryWithBackoff()`, `withErrorHandling()`, date/string utilities
+- **`util/logger.ts`** — `logInfo()`, `logWarn()`, `logError()` — writes to gas-logs spreadsheet
+- **`config.ts`** — LINE API URLs, sheet names (StockUniverse, UserConfig), script property keys, TIMEZONE, TOP_STOCKS_COUNT
 
 ### Python Scripts (`scripts/`)
 
-All use Google service account auth. Timestamps use UTC+8.
+All use Google service account auth. Timestamps use UTC+8. Scripts are in `scripts/data_collect/` and `scripts/news_collect/`.
+
+**Data collectors** (`scripts/data_collect/`):
 
 | Script | Schedule | What it does |
 |---|---|---|
-| `collect_finnhub.py` | Hourly | Quote, ratings, metrics → cols D-AE |
-| `collect_fmp_targets.py` | Daily 8:03 AM | Price targets → cols AF-AK (batched by day parity) |
-| `collect_marketwatch.py` | Local cron 7:03/13:03 | Scrapes analyst estimates → cols AL-AW (batched 250 each) |
-| `collect_news.py` | Hourly | RSS feeds → NewsStore (keyword-based ticker tagging) |
-| `cleanup_news.py` | Daily 2:47 AM | Deletes NewsStore rows older than 7 days |
-| `backfill_keywords.py` | One-time | Populates Keywords col (AX) from company names |
-| `backfill_exchange_name.py` | One-time | Populates Exchange/Name from Finnhub profile2 |
+| `collect_finnhub.py` | Hourly (skip 06-08 UTC) | Quote, ratings, metrics → per-stock sheet + StockUniverse |
+| `collect_yfinance.py` | Daily 15:00 UTC+8 | OHLCV → per-stock sheet + StockUniverse |
+| `collect_fmp_targets.py` | Daily 14:00 UTC+8 | Price targets → per-stock sheet + StockUniverse |
+| `collect_marketwatch.py` | Local cron only | Analyst estimates via nodriver (headless Chrome). Resumes via `.mw_progress.json` |
 
-### Google Sheets Schema
+**News collectors** (`scripts/news_collect/`):
 
-**StockUniverse** (50 columns): Ticker, Exchange, Name, Finnhub data (D-AE), FMP targets (AF-AK), MarketWatch data (AL-AW), Keywords (AX)
+| Script | Schedule | What it does |
+|---|---|---|
+| `collect_cnbc.py` | Hourly | CNBC RSS → per-source news sheet |
+| `collect_reuters.py` | Hourly | Reuters RSS → per-source news sheet |
+| `cleanup_news.py` | Daily 2:47 AM | Deletes news rows older than 7 days |
 
-**NewsStore**: ID, Date, TickerTags, Title, Snippet, URL, Processed_At
+**Shared modules**: `scripts/data_collect/common.py` (Sheets helpers, stock sheet CRUD, universe batch writes), `scripts/news_collect/news_common.py` (anti-bot headers, ticker keyword matching, article extraction)
 
-**UserConfig**: Config_Key, Config_Value (stores watchlist as JSON)
+### Google Sheets Architecture
 
-**SystemLogs**: Timestamp, Level, Function, Message
+Data lives in Google Drive folder `1kpHXJlv4Abb_S6J8vTSUv44FOQEzDPMu`:
+
+- **`/stocks/`** — 500 individual spreadsheets named `{TICKER} - {Company Name}`, each with a `Daily` tab (one row per trading day, 170 columns from `Data Schema`)
+- **Main spreadsheet** (`1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU`): `StockUniverse` (latest snapshot), `StockSheetIDs` (ticker→spreadsheet ID mapping), `Data Schema` (170-column header definitions)
+- **News spreadsheets** — one per source (CNBC, Reuters), columns: ID, Date, TickerTags, Title, Content, URL, Processed_At
+- **user-config** (`1rIVv2lZDrUT7bCO8iXzl5g5J_-BKA7RjusT64akZD0k`): `News Keywords` tab (ticker keywords for news tagging, col H), `Users` tab
+- **gas-logs** — SystemLogs written by GAS
+
+All collectors write to both per-stock sheets (historical) and StockUniverse (latest snapshot) using batch writes.
 
 ## Key Patterns
 
 - **Retry with backoff**: `retryWithBackoff()` in GAS, `*_with_retry()` in Python — all external API calls use retry
-- **Batch processing**: FMP and MarketWatch split 500 tickers into batches of 250 to respect rate limits
-- **News tagging**: `extract_ticker_tags()` matches article text against Keywords column (AX) only, not ticker symbols, to avoid false positives from short tickers (A, IT, ON)
-- **MarketWatch anti-bot**: Chrome 136 User-Agent, Sec-Fetch headers, 8s delay. GitHub Actions IPs are blocked — runs via local cron only
+- **Batch processing**: All collectors batch StockUniverse writes (20 tickers per batch via `batch_write_universe()`)
+- **News tagging**: `extract_ticker_tags()` in `news_common.py` matches article text against user-config News Keywords tab (col H), not ticker symbols, to avoid false positives from short tickers (A, IT, ON)
+- **MarketWatch anti-bot**: Uses `nodriver` (undetected headless Chrome) to bypass DataDome. Playwright/urllib get blocked. Progress saved to `.mw_progress.json` for resume. GitHub Actions IPs are blocked — runs via local Windows cron only (needs residential VPN)
+- **News anti-bot**: Rotating User-Agents, shared cookie jar, random delays (1.5-4s) in `news_common.py`
 - **Sheets quota**: 60 writes/min. Python scripts use batch writes or rate-limit pauses
+- **Per-stock sheets**: `find_or_create_today_row()` + `write_stock_data()` in `common.py` — each day gets one row, keyed by US Eastern date
 
 ## Secrets & Config
 
@@ -81,10 +92,12 @@ All use Google service account auth. Timestamps use UTC+8.
 
 ## Cron Schedules (all times UTC+8)
 
-- Finnhub: hourly at :07
-- News collection: hourly at :13
-- FMP targets: 8:03 AM daily
-- MarketWatch: 7:03 AM + 1:03 PM (local cron only)
+- Finnhub: hourly at :15 (skip 14:00-16:00 to avoid Sheets quota contention)
+- CNBC news: hourly at :00
+- Reuters news: hourly at :30
+- FMP targets: 14:00 daily
+- yfinance: 15:00 daily
+- MarketWatch: local Windows cron (needs VPN, not GitHub Actions)
 - News cleanup: 2:47 AM daily
 - GAS pre-market scan: 20:30
 - GAS post-market scan: 05:30
