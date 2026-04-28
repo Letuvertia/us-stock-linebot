@@ -41,6 +41,11 @@ interface StockCandidate {
   updatedAt: string;
 }
 
+interface IndustryPeStats {
+  mean: number;
+  std: number;
+}
+
 // Column indices in StockUniverse sheet (0-based, matches 173-col schema)
 const COL = {
   TICKER: 0, EXCHANGE: 1, NAME: 2,
@@ -150,6 +155,29 @@ function loadStocksFromSheet(): StockCandidate[] {
   return results;
 }
 
+function _computeIndustryPeStats(
+  allCandidates: StockCandidate[],
+  industryMap: Map<string, string>
+): Map<string, IndustryPeStats> {
+  const byLabel = new Map<string, number[]>();
+  for (const s of allCandidates) {
+    if (s.peTTM === null || s.peTTM <= 0) continue;
+    const label = industryMap.get(s.ticker);
+    if (!label) continue;
+    if (!byLabel.has(label)) byLabel.set(label, []);
+    byLabel.get(label)!.push(s.peTTM);
+  }
+
+  const stats = new Map<string, IndustryPeStats>();
+  for (const [label, pes] of byLabel) {
+    if (pes.length < 2) continue;
+    const mean = pes.reduce((a, b) => a + b, 0) / pes.length;
+    const variance = pes.reduce((a, b) => a + (b - mean) ** 2, 0) / pes.length;
+    stats.set(label, { mean, std: Math.sqrt(variance) });
+  }
+  return stats;
+}
+
 function _bestUpside(s: StockCandidate): number | null {
   if (s.mwUpsidePct !== null) return s.mwUpsidePct;
   return s.upsidePct;
@@ -204,7 +232,63 @@ function _pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function formatStockRanking(stocks: StockCandidate[]): string {
+function _formatStockRow(
+  s: StockCandidate,
+  i: number,
+  isLast: boolean,
+  industryLabel: string | undefined,
+  peStats: Map<string, IndustryPeStats>
+): string {
+  let row = '';
+  const rating = _ratingLabel(s.ratingScore);
+  const arrow = s.changePct >= 0 ? '📈' : '📉';
+  const tAvg = s.mwTargetAvg ?? s.targetConsensus;
+  const tLow = s.mwTargetLow ?? s.targetLow;
+  const tHigh = s.mwTargetHigh ?? s.targetHigh;
+  const upside = _bestUpside(s);
+
+  row += `${i + 1}. ${s.ticker} (${s.name})\n`;
+  row += `   ${arrow} $${s.currentPrice} (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)\n`;
+
+  if (industryLabel) row += `   ${industryLabel}\n`;
+
+  if (tAvg !== null) {
+    row += `   目標均價: $${tAvg} ($${tLow}~$${tHigh})\n`;
+    if (upside !== null) row += `   潛在漲幅: +${upside}%\n`;
+  } else {
+    row += `   無目標價資料\n`;
+  }
+
+  row += `   評等: ${rating} (${s.ratingScore}/5)\n`;
+  row += `   [${s.strongBuy}/${s.buy}/${s.hold}/${s.sell}/${s.strongSell}]`;
+  if (s.mwNumRatings) row += ` ${s.mwNumRatings}人`;
+  row += `\n`;
+
+  const peVals: string[] = [];
+  if (s.peTTM !== null) peVals.push(`PE:${s.peTTM.toFixed(1)}`);
+  if (s.forwardPE !== null) peVals.push(`FwdPE:${s.forwardPE.toFixed(1)}`);
+  if (peVals.length > 0) row += `   ${peVals.join('  ')}\n`;
+
+  if (industryLabel) {
+    const st = peStats.get(industryLabel);
+    if (st) row += `   產業PE: ${st.mean.toFixed(1)} ± ${st.std.toFixed(1)}\n`;
+  }
+
+  const eps: string[] = [];
+  if (s.mwEpsFY1) eps.push(`EPS:${s.mwEpsFY1}`);
+  if (s.mwEpsFY2) eps.push(`→${s.mwEpsFY2}`);
+  if (s.mwEpsLQSurprise !== null) eps.push(`驚喜:${s.mwEpsLQSurprise > 0 ? '+' : ''}${s.mwEpsLQSurprise}`);
+  if (eps.length > 0) row += `   ${eps.join(' ')}\n`;
+
+  if (!isLast) row += `\n`;
+  return row;
+}
+
+function formatStockRanking(
+  stocks: StockCandidate[],
+  industryMap: Map<string, string>,
+  peStats: Map<string, IndustryPeStats>
+): string {
   const date = formatDateTW(new Date());
   const road = _pick(ROADS);
   const location = _pick(LOCATIONS);
@@ -214,34 +298,7 @@ function formatStockRanking(stocks: StockCandidate[]): string {
   msg += `基準: 分析師目標價 + 評等\n\n`;
 
   stocks.forEach((s, i) => {
-    const rating = _ratingLabel(s.ratingScore);
-    msg += `${i + 1}. ${s.ticker} (${s.name})\n`;
-    const arrow = s.changePct >= 0 ? '📈' : '📉';
-    msg += `   ${arrow} $${s.currentPrice} (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)\n`;
-    const tAvg = s.mwTargetAvg ?? s.targetConsensus;
-    const tLow = s.mwTargetLow ?? s.targetLow;
-    const tHigh = s.mwTargetHigh ?? s.targetHigh;
-    const upside = _bestUpside(s);
-    msg += `   目標均價: $${tAvg} ($${tLow}~$${tHigh})\n`;
-    msg += `   潛在漲幅: +${upside}%\n`;
-
-    msg += `   評等: ${rating} (${s.ratingScore}/5)\n`;
-    msg += `   [${s.strongBuy}/${s.buy}/${s.hold}/${s.sell}/${s.strongSell}]`;
-    if (s.mwNumRatings) msg += ` ${s.mwNumRatings}人`;
-    msg += `\n`;
-
-    const extras: string[] = [];
-    if (s.forwardPE) extras.push(`FwdPE:${s.forwardPE}`);
-    if (s.beta) extras.push(`β:${s.beta}`);
-    if (extras.length > 0) msg += `   ${extras.join(' ')}\n`;
-
-    const eps: string[] = [];
-    if (s.mwEpsFY1) eps.push(`EPS:${s.mwEpsFY1}`);
-    if (s.mwEpsFY2) eps.push(`→${s.mwEpsFY2}`);
-    if (s.mwEpsLQSurprise !== null) eps.push(`驚喜:${s.mwEpsLQSurprise > 0 ? '+' : ''}${s.mwEpsLQSurprise}`);
-    if (eps.length > 0) msg += `   ${eps.join(' ')}\n`;
-
-    if (i < stocks.length - 1) msg += `\n`;
+    msg += _formatStockRow(s, i, i === stocks.length - 1, industryMap.get(s.ticker), peStats);
   });
 
   msg += `──────────────\n`;
@@ -259,14 +316,12 @@ function queryTargetPriceByCategory(categoryQuery: string): string | null {
   }
   if (entries.length === 0) return '(找不到產業分類資料)';
 
-  // Collect all unique label strings (category and subCategory)
   const labels = new Map<string, 'category' | 'subCategory'>();
   for (const e of entries) {
     if (e.category) labels.set(e.category, 'category');
     if (e.subCategory) labels.set(e.subCategory, 'subCategory');
   }
 
-  // Find the first label that appears in the query
   let matchedLabel: string | null = null;
   let matchedField: 'category' | 'subCategory' | null = null;
   for (const [label, field] of labels) {
@@ -277,19 +332,21 @@ function queryTargetPriceByCategory(categoryQuery: string): string | null {
     }
   }
 
-  if (!matchedLabel || !matchedField) return null; // no category found in message
+  if (!matchedLabel || !matchedField) return null;
 
-  // Collect tickers in matched category
   const tickers = new Set<string>();
   for (const e of entries) {
     if (matchedField === 'category' && e.category === matchedLabel) tickers.add(e.ticker);
     if (matchedField === 'subCategory' && e.subCategory === matchedLabel) tickers.add(e.ticker);
   }
 
-  const candidates = loadStocksFromSheet().filter(s => tickers.has(s.ticker));
+  const allCandidates = loadStocksFromSheet();
+  const industryMap = _buildIndustryMap();
+  const peStats = _computeIndustryPeStats(allCandidates, industryMap);
+
+  const candidates = allCandidates.filter(s => tickers.has(s.ticker));
   if (candidates.length === 0) return `(${matchedLabel} 目前無資料)`;
 
-  // Sort by upside descending (stocks with no target go to the end), take top 10
   const sorted = candidates
     .sort((a, b) => (_bestUpside(b) ?? -Infinity) - (_bestUpside(a) ?? -Infinity))
     .slice(0, 10);
@@ -299,24 +356,11 @@ function queryTargetPriceByCategory(categoryQuery: string): string | null {
   const location = _pick(LOCATIONS);
   let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
   msg += `──────────────\n\n`;
-  msg += `📊 ${matchedLabel} 目標價排行 (${date})\n\n`;
+  msg += `📊 ${matchedLabel} 目標價排行 (${date})\n`;
+  msg += `基準: 分析師目標價\n\n`;
 
   sorted.forEach((s, i) => {
-    const upside = _bestUpside(s);
-    const tAvg = s.mwTargetAvg ?? s.targetConsensus;
-    const rating = _ratingLabel(s.ratingScore);
-    msg += `${i + 1}. ${s.ticker} (${s.name})\n`;
-    const arrow = s.changePct >= 0 ? '📈' : '📉';
-    msg += `   ${arrow} $${s.currentPrice} (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)\n`;
-    if (tAvg !== null) {
-      msg += `   目標均價: $${tAvg}`;
-      if (upside !== null) msg += `  潛在漲幅: +${upside}%`;
-      msg += `\n`;
-    } else {
-      msg += `   無目標價資料\n`;
-    }
-    msg += `   評等: ${rating} (${s.ratingScore}/5)\n`;
-    if (i < sorted.length - 1) msg += `\n`;
+    msg += _formatStockRow(s, i, i === sorted.length - 1, industryMap.get(s.ticker), peStats);
   });
 
   msg += `──────────────\n`;
@@ -328,21 +372,24 @@ function executeStockScan(label: string): void {
   const fnName = 'executeStockScan';
   logInfo(fnName, `Starting ${label} scan`);
 
-  const candidates = loadStocksFromSheet();
-  if (candidates.length === 0) {
+  const allCandidates = loadStocksFromSheet();
+  if (allCandidates.length === 0) {
     logWarn(fnName, 'No stock data in StockUniverse (run data collector first)');
     return;
   }
 
-  logInfo(fnName, `Loaded ${candidates.length} stocks from sheet`);
+  logInfo(fnName, `Loaded ${allCandidates.length} stocks from sheet`);
 
-  const ranked = rankStocks(candidates);
+  const industryMap = _buildIndustryMap();
+  const peStats = _computeIndustryPeStats(allCandidates, industryMap);
+
+  const ranked = rankStocks(allCandidates);
   if (ranked.length === 0) {
     logWarn(fnName, 'No stocks passed filtering criteria');
     return;
   }
 
-  const message = formatStockRanking(ranked);
+  const message = formatStockRanking(ranked, industryMap, peStats);
   sendPushMessage(message);
   logInfo(fnName, `Pushed top ${ranked.length} stocks to LINE`);
 }
