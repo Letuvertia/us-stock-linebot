@@ -171,6 +171,81 @@ function formatPeerPeReport(groups: QualifyingGroup[], industryMap: Map<string, 
   return msg;
 }
 
+function queryPeerPeByCategory(categoryQuery: string): string | null {
+  let entries: Array<{ ticker: string; category: string; subCategory: string }> = [];
+  try {
+    entries = _loadIndustryCategories();
+  } catch (_) {
+    return '(無法讀取產業分類資料)';
+  }
+  if (entries.length === 0) return '(找不到產業分類資料)';
+
+  // Find matching label
+  const labels = new Map<string, 'category' | 'subCategory'>();
+  for (const e of entries) {
+    if (e.category) labels.set(e.category, 'category');
+    if (e.subCategory) labels.set(e.subCategory, 'subCategory');
+  }
+
+  let matchedLabel: string | null = null;
+  let matchedField: 'category' | 'subCategory' | null = null;
+  for (const [label, field] of labels) {
+    if (categoryQuery.includes(label)) {
+      matchedLabel = label;
+      matchedField = field;
+      break;
+    }
+  }
+
+  if (!matchedLabel || !matchedField) return null;
+
+  const industryTickers = new Set<string>();
+  for (const e of entries) {
+    if (matchedField === 'category' && e.category === matchedLabel) industryTickers.add(e.ticker);
+    if (matchedField === 'subCategory' && e.subCategory === matchedLabel) industryTickers.add(e.ticker);
+  }
+
+  const stockMap = _loadPeerStocksFromSheet();
+  const industryMap = _buildIndustryMap();
+  const allGroups = findPeerUndervalued(stockMap);
+
+  const filtered = allGroups.filter(g => industryTickers.has(g.mainTicker));
+  if (filtered.length === 0) return `(${matchedLabel} 目前無符合 P/E 後 30% 的股票)`;
+
+  // Reuse formatter but override header label
+  const date = formatDateTW(new Date());
+  const road = _pick(ROADS);
+  const location = _pick(LOCATIONS);
+
+  let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
+  msg += `──────────────\n\n`;
+  msg += `📊 ${matchedLabel} 低估 P/E 掃描 (${date})\n`;
+  msg += `條件: P/E 在同業後 30%\n\n`;
+
+  for (const group of filtered) {
+    msg += `▸ ${group.mainTicker}\n\n`;
+
+    const maxLen = Math.max(...group.rows.map(r => r.ticker.length));
+    const IND_WIDTH = 20;
+    const PE_WIDTH = 5;
+
+    for (const row of group.rows) {
+      const prefix = row.isMain ? '★' : ' ';
+      const t = row.ticker.padEnd(maxLen);
+      const ind = _trunc(industryMap.get(row.ticker) || '-', IND_WIDTH).padEnd(IND_WIDTH);
+      const pe = row.peTTM !== null ? row.peTTM.toFixed(1).padStart(PE_WIDTH) : '  N/A';
+      const fwd = row.forwardPE !== null ? row.forwardPE.toFixed(1).padStart(PE_WIDTH) : '  N/A';
+      msg += `${prefix}${t}  ${ind}  P/E:${pe}  FwP/E:${fwd}\n`;
+    }
+
+    msg += `\n`;
+  }
+
+  msg += `──────────────\n`;
+  msg += `共 ${filtered.length} 檔符合條件`;
+  return msg;
+}
+
 function executeIndustryPeReport(): void {
   const fnName = 'executeIndustryPeReport';
   logInfo(fnName, 'Starting peer P/E undervaluation scan');

@@ -40,6 +40,14 @@ function _dispatch(text: string, replyToken: string): void {
     }
   }
 
+  if (/p\/?e/i.test(text)) {
+    const result = queryPeerPeByCategory(text);
+    if (result !== null) {
+      _replyWithHelp(replyToken, result);
+      return;
+    }
+  }
+
   // Fallback: random reaction
   const reactions = [
     '(歪頭)', '(搖尾巴)', '(發呆)', '(打哈欠)', '(聞聞)',
