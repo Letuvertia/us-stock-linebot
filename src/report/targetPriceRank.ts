@@ -209,7 +209,7 @@ function formatStockRanking(stocks: StockCandidate[]): string {
   const road = _pick(ROADS);
   const location = _pick(LOCATIONS);
   let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
-  msg += `─────────────────\n\n`;
+  msg += `──────────────\n\n`;
   msg += `📊 美股低估排行 (${date})\n`;
   msg += `基準: 分析師目標價 + 評等\n\n`;
 
@@ -244,7 +244,7 @@ function formatStockRanking(stocks: StockCandidate[]): string {
     if (i < stocks.length - 1) msg += `\n`;
   });
 
-  msg += `─────────────────\n`;
+  msg += `──────────────\n`;
   msg += `資料更新: ${stocks[0]?.updatedAt || 'N/A'}\n`;
   msg += `共 ${stocks.length} 檔符合條件 (評等≥中立 且 目標價有上漲空間)`;
   return msg;
@@ -298,7 +298,7 @@ function queryTargetPriceByCategory(categoryQuery: string): string | null {
   const road = _pick(ROADS);
   const location = _pick(LOCATIONS);
   let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
-  msg += `─────────────────\n\n`;
+  msg += `──────────────\n\n`;
   msg += `📊 ${matchedLabel} 目標價排行 (${date})\n\n`;
 
   sorted.forEach((s, i) => {
@@ -319,7 +319,7 @@ function queryTargetPriceByCategory(categoryQuery: string): string | null {
     if (i < sorted.length - 1) msg += `\n`;
   });
 
-  msg += `─────────────────\n`;
+  msg += `──────────────\n`;
   msg += `${matchedLabel} 共 ${candidates.length} 檔，顯示前 ${sorted.length} 名`;
   return msg;
 }
