@@ -307,6 +307,62 @@ function formatStockRanking(
   return msg;
 }
 
+function _loadChineseKeywordsMap(): Map<string, string> {
+  const id = getScriptProperty(PROP_KEYS.USER_CONFIG_SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(id);
+  const sheet = ss.getSheetByName('News Keywords');
+  if (!sheet || sheet.getLastRow() <= 1) return new Map();
+
+  const all = sheet.getRange(1, 1, sheet.getLastRow(), 5).getValues();
+  const headers = (all[0] as unknown[]).map(h => String(h).trim());
+  const tickerIdx = headers.indexOf('Ticker');
+  const chineseIdx = headers.indexOf('Chinese Keywords');
+  if (tickerIdx < 0 || chineseIdx < 0) return new Map();
+
+  const map = new Map<string, string>(); // keyword → ticker
+  for (let i = 1; i < all.length; i++) {
+    const row = all[i] as unknown[];
+    const ticker = String(row[tickerIdx] || '').trim();
+    const chinese = String(row[chineseIdx] || '').trim();
+    if (!ticker || !chinese) continue;
+    for (const kw of chinese.split(',').map(k => k.trim()).filter(Boolean)) {
+      map.set(kw, ticker);
+    }
+  }
+  return map;
+}
+
+function queryTargetPriceSingle(query: string): string | null {
+  const chineseMap = _loadChineseKeywordsMap();
+
+  let foundTicker: string | null = null;
+  for (const [kw, ticker] of chineseMap) {
+    if (query.includes(kw)) {
+      foundTicker = ticker;
+      break;
+    }
+  }
+  if (!foundTicker) return null;
+
+  const allCandidates = loadStocksFromSheet();
+  const stock = allCandidates.find(s => s.ticker === foundTicker);
+  if (!stock) return null;
+
+  const industryMap = _buildIndustryMap();
+  const industryLabel = industryMap.get(foundTicker);
+  const peStats = _computeIndustryPeStats(allCandidates, industryMap);
+
+  const date = formatDateTW(new Date());
+  const road = _pick(ROADS);
+  const location = _pick(LOCATIONS);
+  let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
+  msg += `──────────────\n\n`;
+  msg += `📊 ${foundTicker} 目標價 (${date})\n\n`;
+  msg += _formatStockRow(stock, 0, true, industryLabel, peStats);
+  msg += `──────────────`;
+  return msg;
+}
+
 function queryTargetPriceByCategory(categoryQuery: string): string | null {
   let entries: Array<{ ticker: string; category: string; subCategory: string }> = [];
   try {

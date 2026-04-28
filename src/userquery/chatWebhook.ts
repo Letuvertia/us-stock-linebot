@@ -51,6 +51,11 @@ function _dispatch(text: string, replyToken: string): void {
       _replyWithHelp(replyToken, result);
       return;
     }
+    const single = queryTargetPriceSingle(text);
+    if (single !== null) {
+      _replyWithHelp(replyToken, single);
+      return;
+    }
   }
 
   if (/p\/?e/i.test(text)) {
