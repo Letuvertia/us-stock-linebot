@@ -1,12 +1,25 @@
-const HELP_MSG =
-  `皮皮咬著一張指令表\n` +
+const HELP_HEADERS = [
+  '皮皮咬著一張指令表',
+  '指令表上面有皮皮的口水',
+  '皮皮把指令表丟在地上之後開心的看著你！',
+  '皮皮把指令表丟在玄關之後跑去廚房了',
+  '皮皮想要把指令表藏在沙發後面',
+  '皮皮把指令表壓住了',
+  '皮皮死咬著指令表不給你',
+  '皮皮跑去追蝴蝶了',
+  '皮皮盯著牆壁上的螞蟻',
+  '皮皮在啃你的拖鞋',
+];
+
+const HELP_BODY =
   `──────────────\n` +
   `指標：目前價、P/E\n` +
   `產業分類：公用事業/原材料/工業/房地產/核心消費/能源/資訊科技/通訊服務/醫療保健/金融/非核心消費`;
 
 function _replyWithHelp(replyToken: string, mainText: string): void {
+  const header = HELP_HEADERS[Math.floor(Math.random() * HELP_HEADERS.length)];
+  const helpChunk = { type: 'text', text: `${header}\n${HELP_BODY}` };
   const mainChunks = splitLongMessage(mainText).map(t => ({ type: 'text', text: t }));
-  const helpChunk = { type: 'text', text: HELP_MSG };
   const messages = [...mainChunks, helpChunk].slice(0, 5);
 
   UrlFetchApp.fetch(LINE_REPLY_URL, {
