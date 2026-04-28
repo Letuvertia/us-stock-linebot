@@ -237,7 +237,8 @@ function _formatStockRow(
   i: number,
   isLast: boolean,
   industryLabel: string | undefined,
-  peStats: Map<string, IndustryPeStats>
+  peStats: Map<string, IndustryPeStats>,
+  showIndex: boolean = true
 ): string {
   let row = '';
   const rating = _ratingLabel(s.ratingScore);
@@ -247,7 +248,7 @@ function _formatStockRow(
   const tHigh = s.mwTargetHigh ?? s.targetHigh;
   const upside = _bestUpside(s);
 
-  row += `${i + 1}. ${s.ticker} (${s.name})\n`;
+  row += showIndex ? `${i + 1}. ${s.ticker} (${s.name})\n` : `${s.ticker} (${s.name})\n`;
   row += `   ${arrow} $${s.currentPrice} (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)\n`;
 
   if (industryLabel) row += `   ${industryLabel}\n`;
@@ -388,8 +389,9 @@ function queryTargetPriceSingle(query: string): string | null {
   let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
   msg += `──────────────\n\n`;
   msg += `📊 ${foundTicker} 目標價 (${date})\n\n`;
-  msg += _formatStockRow(stock, 0, true, industryLabel, peStats);
-  msg += `──────────────`;
+  msg += _formatStockRow(stock, 0, true, industryLabel, peStats, false);
+  msg += `資料更新: ${stock.updatedAt}\n`;
+  msg += `\n──────────────`;
   return msg;
 }
 
