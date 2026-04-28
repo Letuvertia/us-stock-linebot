@@ -14,7 +14,8 @@ const HELP_HEADERS = [
 const HELP_BODY =
   `──────────────\n` +
   `指標：目標價、P/E\n` +
-  `產業分類：公用事業/原材料/工業/房地產/核心消費/能源/資訊科技/通訊服務/醫療保健/金融/非核心消費`;
+  `產業分類：公用事業/原材料/工業/房地產/核心消費/能源/資訊科技/通訊服務/醫療保健/金融/非核心消費\n` +
+  `個股：直接問股票代碼、英文或中文`;
 
 function _replyWithHelp(replyToken: string, mainText: string): void {
   const header = HELP_HEADERS[Math.floor(Math.random() * HELP_HEADERS.length)];
