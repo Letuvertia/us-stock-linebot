@@ -351,11 +351,25 @@ function queryTargetPriceSingle(query: string): string | null {
   const kwMap = _loadTickerKeywordsMap();
   const queryLower = query.toLowerCase();
 
+  // Sort longer keywords first so "apple" beats "app", etc.
+  const sortedKws = [...kwMap.keys()].sort((a, b) => b.length - a.length);
+
   let foundTicker: string | null = null;
-  for (const [kw, ticker] of kwMap) {
-    if (queryLower.includes(kw)) {
-      foundTicker = ticker;
-      break;
+  for (const kw of sortedKws) {
+    const isAscii = /^[\x00-\x7F]+$/.test(kw);
+    if (isAscii) {
+      // Word-boundary match so ticker "A" doesn't match inside "AMD"
+      const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`\\b${escaped}\\b`).test(queryLower)) {
+        foundTicker = kwMap.get(kw)!;
+        break;
+      }
+    } else {
+      // Chinese: substring match (no spaces between chars)
+      if (queryLower.includes(kw)) {
+        foundTicker = kwMap.get(kw)!;
+        break;
+      }
     }
   }
   if (!foundTicker) return null;
