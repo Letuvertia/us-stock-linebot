@@ -250,6 +250,80 @@ function formatStockRanking(stocks: StockCandidate[]): string {
   return msg;
 }
 
+function queryTargetPriceByCategory(categoryQuery: string): string | null {
+  let entries: Array<{ ticker: string; category: string; subCategory: string }> = [];
+  try {
+    entries = _loadIndustryCategories();
+  } catch (_) {
+    return '(無法讀取產業分類資料)';
+  }
+  if (entries.length === 0) return '(找不到產業分類資料)';
+
+  // Collect all unique label strings (category and subCategory)
+  const labels = new Map<string, 'category' | 'subCategory'>();
+  for (const e of entries) {
+    if (e.category) labels.set(e.category, 'category');
+    if (e.subCategory) labels.set(e.subCategory, 'subCategory');
+  }
+
+  // Find the first label that appears in the query
+  let matchedLabel: string | null = null;
+  let matchedField: 'category' | 'subCategory' | null = null;
+  for (const [label, field] of labels) {
+    if (categoryQuery.includes(label)) {
+      matchedLabel = label;
+      matchedField = field;
+      break;
+    }
+  }
+
+  if (!matchedLabel || !matchedField) return null; // no category found in message
+
+  // Collect tickers in matched category
+  const tickers = new Set<string>();
+  for (const e of entries) {
+    if (matchedField === 'category' && e.category === matchedLabel) tickers.add(e.ticker);
+    if (matchedField === 'subCategory' && e.subCategory === matchedLabel) tickers.add(e.ticker);
+  }
+
+  const candidates = loadStocksFromSheet().filter(s => tickers.has(s.ticker));
+  if (candidates.length === 0) return `(${matchedLabel} 目前無資料)`;
+
+  // Sort by upside descending (stocks with no target go to the end), take top 10
+  const sorted = candidates
+    .sort((a, b) => (_bestUpside(b) ?? -Infinity) - (_bestUpside(a) ?? -Infinity))
+    .slice(0, 10);
+
+  const date = formatDateTW(new Date());
+  const road = _pick(ROADS);
+  const location = _pick(LOCATIONS);
+  let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
+  msg += `─────────────────\n\n`;
+  msg += `📊 ${matchedLabel} 目標價排行 (${date})\n\n`;
+
+  sorted.forEach((s, i) => {
+    const upside = _bestUpside(s);
+    const tAvg = s.mwTargetAvg ?? s.targetConsensus;
+    const rating = _ratingLabel(s.ratingScore);
+    msg += `${i + 1}. ${s.ticker} (${s.name})\n`;
+    const arrow = s.changePct >= 0 ? '📈' : '📉';
+    msg += `   ${arrow} $${s.currentPrice} (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)\n`;
+    if (tAvg !== null) {
+      msg += `   目標均價: $${tAvg}`;
+      if (upside !== null) msg += `  潛在漲幅: +${upside}%`;
+      msg += `\n`;
+    } else {
+      msg += `   無目標價資料\n`;
+    }
+    msg += `   評等: ${rating} (${s.ratingScore}/5)\n`;
+    if (i < sorted.length - 1) msg += `\n`;
+  });
+
+  msg += `─────────────────\n`;
+  msg += `${matchedLabel} 共 ${candidates.length} 檔，顯示前 ${sorted.length} 名`;
+  return msg;
+}
+
 function executeStockScan(label: string): void {
   const fnName = 'executeStockScan';
   logInfo(fnName, `Starting ${label} scan`);

@@ -1,3 +1,36 @@
+function _isTriggered(event: LineWebhookEvent): boolean {
+  if (isBotMentioned(event)) return true;
+  const text = event.message?.text || '';
+  return text.trimStart().startsWith('皮皮');
+}
+
+function _stripTrigger(text: string): string {
+  // Strip @mentions then leading 皮皮
+  const noMention = text.replace(/@\S+\s*/g, '').trim();
+  return noMention.startsWith('皮皮') ? noMention.slice(2).trim() : noMention;
+}
+
+function _dispatch(text: string, replyToken: string): void {
+  if (text.includes('目標價')) {
+    const result = queryTargetPriceByCategory(text);
+    if (result !== null) {
+      sendReplyMessage(replyToken, result);
+      return;
+    }
+  }
+
+  // Fallback: random reaction
+  const reactions = [
+    '(歪頭)', '(搖尾巴)', '(發呆)', '(打哈欠)', '(聞聞)',
+    '(翻肚皮)', '(轉圈圈)', '(趴下)', '(伸懶腰)', '(抓耳朵)',
+    '(豎起耳朵)', '(皺鼻子)', '(躲在桌下)', '(搖屁股)',
+  ];
+  let a = reactions[Math.floor(Math.random() * reactions.length)];
+  let b = reactions[Math.floor(Math.random() * reactions.length)];
+  while (b === a) b = reactions[Math.floor(Math.random() * reactions.length)];
+  sendReplyMessage(replyToken, `${a} ${b}`);
+}
+
 function handleWebhook(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
   const fnName = 'handleWebhook';
 
@@ -10,29 +43,19 @@ function handleWebhook(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
       }
 
       if (event.type !== 'message' || event.message?.type !== 'text') continue;
-      if (!isBotMentioned(event)) continue;
+      if (!_isTriggered(event)) continue;
 
-      const userMessage = extractUserMessage(event);
+      const userMessage = _stripTrigger(event.message?.text || '');
       if (!userMessage) continue;
 
       logInfo(fnName, `Received query: ${truncate(userMessage, 50)}`);
 
-      // TODO: implement command dispatch
-      const reactions = [
-        '(歪頭)', '(搖尾巴)', '(發呆)', '(打哈欠)', '(聞聞)',
-        '(翻肚皮)', '(轉圈圈)', '(趴下)', '(伸懶腰)', '(抓耳朵)',
-        '(豎起耳朵)', '(皺鼻子)', '(躲在桌下)', '(搖屁股)',
-      ];
-      const a = reactions[Math.floor(Math.random() * reactions.length)];
-      let b = reactions[Math.floor(Math.random() * reactions.length)];
-      while (b === a) b = reactions[Math.floor(Math.random() * reactions.length)];
-      const reply = `${a} ${b}`;
-      if (reply && event.replyToken) {
-        sendReplyMessage(event.replyToken, reply);
+      if (event.replyToken) {
+        _dispatch(userMessage, event.replyToken);
       }
     }
-  } catch (e) {
-    const error = e instanceof Error ? e : new Error(String(e));
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
     logError(fnName, 'Webhook processing failed', error);
   }
 
