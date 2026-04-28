@@ -1,3 +1,25 @@
+const HELP_MSG =
+  `皮皮咬著一張指令表\n` +
+  `-----------------\n` +
+  `指標：目前價、P/E\n` +
+  `產業分類：公用事業/原材料/工業/房地產/核心消費/能源/資訊科技/通訊服務/醫療保健/金融/非核心消費`;
+
+function _replyWithHelp(replyToken: string, mainText: string): void {
+  const mainChunks = splitLongMessage(mainText).map(t => ({ type: 'text', text: t }));
+  const helpChunk = { type: 'text', text: HELP_MSG };
+  const messages = [...mainChunks, helpChunk].slice(0, 5);
+
+  UrlFetchApp.fetch(LINE_REPLY_URL, {
+    method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getScriptProperty(PROP_KEYS.LINE_CHANNEL_ACCESS_TOKEN)}`,
+    },
+    payload: JSON.stringify({ replyToken, messages }),
+    muteHttpExceptions: true,
+  });
+}
+
 function _isTriggered(event: LineWebhookEvent): boolean {
   if (isBotMentioned(event)) return true;
   const text = event.message?.text || '';
@@ -5,7 +27,6 @@ function _isTriggered(event: LineWebhookEvent): boolean {
 }
 
 function _stripTrigger(text: string): string {
-  // Strip @mentions then leading 皮皮
   const noMention = text.replace(/@\S+\s*/g, '').trim();
   return noMention.startsWith('皮皮') ? noMention.slice(2).trim() : noMention;
 }
@@ -14,7 +35,7 @@ function _dispatch(text: string, replyToken: string): void {
   if (text.includes('目標價')) {
     const result = queryTargetPriceByCategory(text);
     if (result !== null) {
-      sendReplyMessage(replyToken, result);
+      _replyWithHelp(replyToken, result);
       return;
     }
   }
@@ -28,7 +49,7 @@ function _dispatch(text: string, replyToken: string): void {
   let a = reactions[Math.floor(Math.random() * reactions.length)];
   let b = reactions[Math.floor(Math.random() * reactions.length)];
   while (b === a) b = reactions[Math.floor(Math.random() * reactions.length)];
-  sendReplyMessage(replyToken, `${a} ${b}`);
+  _replyWithHelp(replyToken, `${a} ${b}`);
 }
 
 function handleWebhook(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
