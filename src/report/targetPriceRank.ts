@@ -62,6 +62,7 @@ const COL = {
   EPS_LQ_ACT: 122,      // EPS_LQ_Act
   EPS_LQ_SURPRISE: 123, // EPS_LQ_Surprise
   INDUSTRY: 124,   // Industry
+  PEERS: 127,      // Peers (comma-separated)
   UPDATED: 137,    // MW_Updated_At
   FWD_PE: 139,     // Finnhub_Forward_PE
   PEG: 141,        // Finnhub_PEG

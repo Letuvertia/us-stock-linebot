@@ -1,15 +1,3 @@
-interface IndustryStock {
-  ticker: string;
-  name: string;
-  forwardPE: number;
-}
-
-interface IndustryGroup {
-  category: string;
-  subCategory: string;
-  stocks: IndustryStock[];
-}
-
 function _loadIndustryCategories(): Array<{ ticker: string; category: string; subCategory: string }> {
   const id = getScriptProperty(PROP_KEYS.USER_CONFIG_SPREADSHEET_ID);
   const ss = SpreadsheetApp.openById(id);
@@ -41,82 +29,168 @@ function _loadIndustryCategories(): Array<{ ticker: string; category: string; su
   return result;
 }
 
-function _buildForwardPeMap(): Map<string, { name: string; forwardPE: number | null }> {
-  const rows = getAllRows(SHEET_NAMES.STOCK_UNIVERSE);
-  const map = new Map<string, { name: string; forwardPE: number | null }>();
-  for (const row of rows) {
-    const ticker = String((row as unknown[])[0] || '').trim();
-    if (!ticker) continue;
-    map.set(ticker, {
-      name: String((row as unknown[])[COL.NAME] || ''),
-      forwardPE: _num(row as unknown[], COL.FWD_PE),
-    });
+function _buildIndustryMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  try {
+    const entries = _loadIndustryCategories();
+    for (const e of entries) {
+      map.set(e.ticker, `${e.category}/${e.subCategory}`);
+    }
+  } catch (_) {
+    // USER_CONFIG_SPREADSHEET_ID not set — industry labels will show '-'
   }
   return map;
 }
 
-function formatIndustryPeRanking(): string {
-  const entries = _loadIndustryCategories();
-  if (entries.length === 0) return '(No industry category data found)';
+interface StockData {
+  ticker: string;
+  name: string;
+  peTTM: number | null;
+  forwardPE: number | null;
+  peers: string[];
+}
 
-  const stockMap = _buildForwardPeMap();
+interface PeerRow {
+  ticker: string;
+  name: string;
+  peTTM: number | null;
+  forwardPE: number | null;
+  isMain: boolean;
+}
 
-  const groupMap = new Map<string, IndustryGroup>();
-  for (const entry of entries) {
-    const key = `${entry.category}\x00${entry.subCategory}`;
-    if (!groupMap.has(key)) {
-      groupMap.set(key, { category: entry.category, subCategory: entry.subCategory, stocks: [] });
-    }
-    const info = stockMap.get(entry.ticker);
-    if (info && info.forwardPE !== null && info.forwardPE > 0) {
-      groupMap.get(key)!.stocks.push({ ticker: entry.ticker, name: info.name, forwardPE: info.forwardPE });
-    }
+interface QualifyingGroup {
+  mainTicker: string;
+  rows: PeerRow[];
+}
+
+function _loadPeerStocksFromSheet(): Map<string, StockData> {
+  const rows = getAllRows(SHEET_NAMES.STOCK_UNIVERSE);
+  const map = new Map<string, StockData>();
+
+  for (const row of rows) {
+    const r = row as unknown[];
+    const ticker = String(r[COL.TICKER] || '').trim();
+    if (!ticker) continue;
+
+    const peersRaw = String(r[COL.PEERS] || '').trim();
+    const peers = peersRaw ? peersRaw.split(',').map(p => p.trim()).filter(Boolean) : [];
+
+    map.set(ticker, {
+      ticker,
+      name: String(r[COL.NAME] || ''),
+      peTTM: _num(r, COL.PE),
+      forwardPE: _num(r, COL.FWD_PE),
+      peers,
+    });
   }
 
-  const groups = [...groupMap.values()]
-    .filter(g => g.stocks.length > 0)
-    .sort((a, b) => {
-      const aMin = Math.min(...a.stocks.map(s => s.forwardPE));
-      const bMin = Math.min(...b.stocks.map(s => s.forwardPE));
-      return aMin - bMin;
-    });
+  return map;
+}
 
-  if (groups.length === 0) return '(No Forward P/E data available)';
+function findPeerUndervalued(stockMap: Map<string, StockData>): QualifyingGroup[] {
+  const universe = new Set(stockMap.keys());
+  const results: QualifyingGroup[] = [];
 
+  for (const [ticker, stock] of stockMap) {
+    if (stock.peTTM === null || stock.peTTM <= 0) continue;
+
+    const inUniPeers = stock.peers
+      .filter((p, i, arr) => p !== ticker && universe.has(p) && arr.indexOf(p) === i);
+
+    const validPePeers = inUniPeers
+      .map(p => stockMap.get(p)!)
+      .filter(p => p.peTTM !== null && p.peTTM > 0);
+
+    if (validPePeers.length < 2) continue;
+
+    const group = [...validPePeers, stock].sort((a, b) => (a.peTTM ?? 0) - (b.peTTM ?? 0));
+    const rank = group.findIndex(s => s.ticker === ticker) + 1;
+    const threshold = Math.ceil(0.30 * group.length);
+
+    if (rank > threshold) continue;
+
+    const validRows: PeerRow[] = group.map(s => ({
+      ticker: s.ticker,
+      name: s.name,
+      peTTM: s.peTTM,
+      forwardPE: s.forwardPE,
+      isMain: s.ticker === ticker,
+    }));
+
+    const noPeRows: PeerRow[] = inUniPeers
+      .map(p => stockMap.get(p)!)
+      .filter(p => p.peTTM === null || p.peTTM <= 0)
+      .map(p => ({ ticker: p.ticker, name: p.name, peTTM: null, forwardPE: p.forwardPE, isMain: false }));
+
+    results.push({ mainTicker: ticker, rows: [...validRows, ...noPeRows] });
+  }
+
+  results.sort((a, b) => {
+    const aPe = stockMap.get(a.mainTicker)?.peTTM ?? Infinity;
+    const bPe = stockMap.get(b.mainTicker)?.peTTM ?? Infinity;
+    return aPe - bPe;
+  });
+  return results;
+}
+
+function _trunc(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function formatPeerPeReport(groups: QualifyingGroup[], industryMap: Map<string, string>): string {
   const date = formatDateTW(new Date());
-  let msg = `📊 產業 Forward P/E 排行 (${date})\n`;
-  msg += `排序: 群組依最低 P/E 由小到大\n\n`;
+  const road = _pick(ROADS);
+  const location = _pick(LOCATIONS);
+
+  let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
+  msg += `──────────────\n\n`;
+  msg += `📊 同業低估 P/E 掃描 (${date})\n`;
+  msg += `條件: P/E 在同業後 30%\n\n`;
 
   for (const group of groups) {
-    group.stocks.sort((a, b) => a.forwardPE - b.forwardPE);
+    msg += `▸ ${group.mainTicker}\n\n`;
 
-    msg += `${group.category}/${group.subCategory}\n`;
+    const maxLen = Math.max(...group.rows.map(r => r.ticker.length));
+    const IND_WIDTH = 20;
+    const PE_WIDTH = 5;
 
-    // Build labels and compute max width for alignment within this group
-    const labels = group.stocks.map(s => {
-      const shortName = s.name.length > 16 ? s.name.slice(0, 15) + '…' : s.name;
-      return `${s.ticker}  ${shortName}`;
-    });
-    const maxLen = Math.max(...labels.map(l => l.length));
-
-    for (let i = 0; i < group.stocks.length; i++) {
-      const pe = group.stocks[i].forwardPE.toFixed(1);
-      msg += `${labels[i].padEnd(maxLen)}  ${pe}\n`;
+    for (const row of group.rows) {
+      const prefix = row.isMain ? '★' : ' ';
+      const t = row.ticker.padEnd(maxLen);
+      const ind = _trunc(industryMap.get(row.ticker) || '-', IND_WIDTH).padEnd(IND_WIDTH);
+      const pe = row.peTTM !== null ? row.peTTM.toFixed(1).padStart(PE_WIDTH) : '  N/A';
+      const fwd = row.forwardPE !== null ? row.forwardPE.toFixed(1).padStart(PE_WIDTH) : '  N/A';
+      msg += `${prefix}${t}  ${ind}  P/E:${pe}  FwP/E:${fwd}\n`;
     }
 
     msg += `\n`;
   }
 
-  return msg.trimEnd();
+  msg += `──────────────\n`;
+  msg += `共 ${groups.length} 檔符合條件`;
+  return msg;
 }
 
 function executeIndustryPeReport(): void {
   const fnName = 'executeIndustryPeReport';
-  logInfo(fnName, 'Starting industry P/E report');
+  logInfo(fnName, 'Starting peer P/E undervaluation scan');
 
-  const message = withErrorHandling(fnName, () => formatIndustryPeRanking());
-  if (!message) return;
+  const stockMap = _loadPeerStocksFromSheet();
+  if (stockMap.size === 0) {
+    logWarn(fnName, 'No stock data in StockUniverse');
+    return;
+  }
 
+  const industryMap = _buildIndustryMap();
+  const groups = findPeerUndervalued(stockMap);
+
+  if (groups.length === 0) {
+    logWarn(fnName, 'No tickers qualified (bottom 30% P/E vs peers)');
+    return;
+  }
+
+  logInfo(fnName, `${groups.length} tickers qualified`);
+  const message = formatPeerPeReport(groups, industryMap);
   sendPushMessage(message);
-  logInfo(fnName, 'Industry P/E report pushed to LINE');
+  logInfo(fnName, 'Peer P/E report pushed to LINE');
 }
