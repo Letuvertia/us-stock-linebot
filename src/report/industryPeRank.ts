@@ -76,15 +76,16 @@ function formatIndustryPeRanking(): string {
   const groups = [...groupMap.values()]
     .filter(g => g.stocks.length > 0)
     .sort((a, b) => {
-      const c = a.category.localeCompare(b.category);
-      return c !== 0 ? c : a.subCategory.localeCompare(b.subCategory);
+      const aMin = Math.min(...a.stocks.map(s => s.forwardPE));
+      const bMin = Math.min(...b.stocks.map(s => s.forwardPE));
+      return aMin - bMin;
     });
 
   if (groups.length === 0) return '(No Forward P/E data available)';
 
   const date = formatDateTW(new Date());
   let msg = `📊 產業 Forward P/E 排行 (${date})\n`;
-  msg += `排序: 各群組由低至高\n\n`;
+  msg += `排序: 群組依最低 P/E 由小到大\n\n`;
 
   for (const group of groups) {
     group.stocks.sort((a, b) => a.forwardPE - b.forwardPE);
