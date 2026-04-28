@@ -144,8 +144,8 @@ function formatPeerPeReport(groups: QualifyingGroup[], industryMap: Map<string, 
 
   let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
   msg += `──────────────\n\n`;
-  msg += `📊 同業低估 P/E 掃描 (${date})\n`;
-  msg += `條件: P/E 在同業後 30%\n\n`;
+  msg += `📊 同業P/E 分析 (${date})\n`;
+  msg += `基準: P/E 在同業後 30%\n\n`;
 
   for (const group of groups) {
     msg += `▸ ${group.mainTicker}\n\n`;
@@ -219,8 +219,8 @@ function queryPeerPeByCategory(categoryQuery: string): string | null {
 
   let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
   msg += `──────────────\n\n`;
-  msg += `📊 ${matchedLabel} 低估 P/E 掃描 (${date})\n`;
-  msg += `條件: P/E 在同業後 30%\n\n`;
+  msg += `📊 ${matchedLabel} P/E 分析 (${date})\n`;
+  msg += `基準: P/E 在同業後 30%\n\n`;
 
   for (const group of filtered) {
     msg += `▸ ${group.mainTicker}\n\n`;
