@@ -180,7 +180,7 @@ function queryPeerPeByCategory(categoryQuery: string): string | null {
   }
   if (entries.length === 0) return '(找不到產業分類資料)';
 
-  // Find matching label
+  // Find matching label (prefer category match so we can show all subcategories)
   const labels = new Map<string, 'category' | 'subCategory'>();
   for (const e of entries) {
     if (e.category) labels.set(e.category, 'category');
@@ -199,51 +199,68 @@ function queryPeerPeByCategory(categoryQuery: string): string | null {
 
   if (!matchedLabel || !matchedField) return null;
 
-  const industryTickers = new Set<string>();
+  // Build subcategory → ticker[] map for the matched scope
+  const subGroups = new Map<string, string[]>();
   for (const e of entries) {
-    if (matchedField === 'category' && e.category === matchedLabel) industryTickers.add(e.ticker);
-    if (matchedField === 'subCategory' && e.subCategory === matchedLabel) industryTickers.add(e.ticker);
+    const match =
+      (matchedField === 'category' && e.category === matchedLabel) ||
+      (matchedField === 'subCategory' && e.subCategory === matchedLabel);
+    if (!match) continue;
+    const subKey = `${e.category}/${e.subCategory}`;
+    if (!subGroups.has(subKey)) subGroups.set(subKey, []);
+    subGroups.get(subKey)!.push(e.ticker);
   }
 
+  if (subGroups.size === 0) return `(${matchedLabel} 找不到分類資料)`;
+
   const stockMap = _loadPeerStocksFromSheet();
-  const industryMap = _buildIndustryMap();
-  const allGroups = findPeerUndervalued(stockMap);
 
-  const filtered = allGroups.filter(g => industryTickers.has(g.mainTicker));
-  if (filtered.length === 0) return `(${matchedLabel} 目前無符合 P/E 後 30% 的股票)`;
-
-  // Reuse formatter but override header label
   const date = formatDateTW(new Date());
   const road = _pick(ROADS);
   const location = _pick(LOCATIONS);
-
   let msg = `皮皮在${road}的${location}找到了一份資料！\n`;
   msg += `──────────────\n\n`;
-  msg += `📊 ${matchedLabel} P/E 分析 (${date})\n`;
-  msg += `基準: P/E 在同業後 30%\n\n`;
+  msg += `📊 ${matchedLabel} P/E 分析 (${date})\n\n`;
 
-  for (const group of filtered) {
-    msg += `▸ ${group.mainTicker}\n\n`;
+  const PE_WIDTH = 5;
 
-    const maxLen = Math.max(...group.rows.map(r => r.ticker.length));
-    const IND_WIDTH = 20;
-    const PE_WIDTH = 5;
+  for (const [subKey, tickers] of subGroups) {
+    // Collect stock rows with PE data
+    const rows = tickers
+      .map(t => stockMap.get(t))
+      .filter((s): s is StockData => s !== undefined)
+      .sort((a, b) => {
+        if (a.peTTM === null || a.peTTM <= 0) return 1;
+        if (b.peTTM === null || b.peTTM <= 0) return -1;
+        return a.peTTM - b.peTTM;
+      });
 
-    for (const row of group.rows) {
-      const prefix = row.isMain ? '★' : ' ';
-      const t = row.ticker.padEnd(maxLen);
-      const ind = _trunc(industryMap.get(row.ticker) || '-', IND_WIDTH).padEnd(IND_WIDTH);
-      const pe = row.peTTM !== null ? row.peTTM.toFixed(1).padStart(PE_WIDTH) : '  N/A';
-      const fwd = row.forwardPE !== null ? row.forwardPE.toFixed(1).padStart(PE_WIDTH) : '  N/A';
-      msg += `${prefix}${t}  ${ind}  P/E:${pe}  FwP/E:${fwd}\n`;
+    if (rows.length === 0) continue;
+
+    // Compute mean ± std of valid PE for this subgroup
+    const validPes = rows.map(r => r.peTTM).filter((v): v is number => v !== null && v > 0);
+    let statStr = '';
+    if (validPes.length >= 2) {
+      const mean = validPes.reduce((a, b) => a + b, 0) / validPes.length;
+      const std = Math.sqrt(validPes.reduce((a, b) => a + (b - mean) ** 2, 0) / validPes.length);
+      statStr = ` (平均PE ${mean.toFixed(1)} ± ${std.toFixed(1)})`;
+    }
+
+    msg += `${subKey}${statStr}\n\n`;
+
+    const maxLabelLen = Math.max(...rows.map(r => `${r.ticker} (${r.name})`.length));
+
+    for (const r of rows) {
+      const label = `${r.ticker} (${r.name})`.padEnd(maxLabelLen);
+      const pe = r.peTTM !== null && r.peTTM > 0 ? r.peTTM.toFixed(1).padStart(PE_WIDTH) : '  N/A';
+      const fwd = r.forwardPE !== null && r.forwardPE > 0 ? r.forwardPE.toFixed(1).padStart(PE_WIDTH) : '  N/A';
+      msg += `${label}  P/E:${pe}  FwP/E:${fwd}\n`;
     }
 
     msg += `\n`;
   }
 
-  msg += `──────────────\n`;
-  msg += `共 ${filtered.length} 檔符合條件`;
-  return msg;
+  return msg.trimEnd() + `\n──────────────`;
 }
 
 function executeIndustryPeReport(): void {
