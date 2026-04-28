@@ -307,7 +307,8 @@ function formatStockRanking(
   return msg;
 }
 
-function _loadChineseKeywordsMap(): Map<string, string> {
+// Returns Map<lowercaseKeyword, ticker>. Includes ticker symbol, News Keywords, and Chinese Keywords.
+function _loadTickerKeywordsMap(): Map<string, string> {
   const id = getScriptProperty(PROP_KEYS.USER_CONFIG_SPREADSHEET_ID);
   const ss = SpreadsheetApp.openById(id);
   const sheet = ss.getSheetByName('News Keywords');
@@ -316,28 +317,43 @@ function _loadChineseKeywordsMap(): Map<string, string> {
   const all = sheet.getRange(1, 1, sheet.getLastRow(), 5).getValues();
   const headers = (all[0] as unknown[]).map(h => String(h).trim());
   const tickerIdx = headers.indexOf('Ticker');
+  const newsKwIdx = headers.indexOf('News Keywords');
   const chineseIdx = headers.indexOf('Chinese Keywords');
-  if (tickerIdx < 0 || chineseIdx < 0) return new Map();
+  if (tickerIdx < 0) return new Map();
 
-  const map = new Map<string, string>(); // keyword → ticker
+  const map = new Map<string, string>();
+  const addKw = (kw: string, ticker: string) => {
+    const k = kw.trim();
+    if (k) map.set(k.toLowerCase(), ticker);
+  };
+
   for (let i = 1; i < all.length; i++) {
     const row = all[i] as unknown[];
     const ticker = String(row[tickerIdx] || '').trim();
-    const chinese = String(row[chineseIdx] || '').trim();
-    if (!ticker || !chinese) continue;
-    for (const kw of chinese.split(',').map(k => k.trim()).filter(Boolean)) {
-      map.set(kw, ticker);
+    if (!ticker) continue;
+
+    addKw(ticker, ticker); // e.g. "AAPL"
+
+    if (newsKwIdx >= 0) {
+      const newsKws = String(row[newsKwIdx] || '');
+      for (const kw of newsKws.split(',')) addKw(kw, ticker); // e.g. "Apple", "iPhone"
+    }
+
+    if (chineseIdx >= 0) {
+      const chineseKws = String(row[chineseIdx] || '');
+      for (const kw of chineseKws.split(',')) addKw(kw, ticker); // e.g. "蘋果"
     }
   }
   return map;
 }
 
 function queryTargetPriceSingle(query: string): string | null {
-  const chineseMap = _loadChineseKeywordsMap();
+  const kwMap = _loadTickerKeywordsMap();
+  const queryLower = query.toLowerCase();
 
   let foundTicker: string | null = null;
-  for (const [kw, ticker] of chineseMap) {
-    if (query.includes(kw)) {
+  for (const [kw, ticker] of kwMap) {
+    if (queryLower.includes(kw)) {
       foundTicker = ticker;
       break;
     }
