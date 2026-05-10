@@ -25,6 +25,6 @@ jobs:
 
       - name: Run yfinance collector
         env:
-          GOOGLE_CREDS_FILE: /tmp/gsa.json
+          DATA_CREDS_FILE: /tmp/gsa.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
         run: python scripts/market_data/collect_yfinance.py

@@ -14,22 +14,11 @@ from datetime import datetime, timedelta
 import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'market_data'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import data_common
+from config import OLLAMA_MODEL, LOOKBACK_DAYS
 
-# Load .env from repo root if present
-_env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(_env_path):
-    with open(_env_path) as _f:
-        for _line in _f:
-            _line = _line.strip()
-            if _line and not _line.startswith('#') and '=' in _line:
-                _k, _v = _line.split('=', 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
-
-CNBC_ID = '14yZCDkH7MCqb3YAiBp8yg5iJCkCYpWvlGmAvzoIx8uk'
-MODEL = os.environ.get('OLLAMA_MODEL', 'qwen3.5:4b')
 SUMMARY_COL_HEADER = 'Summary'
-LOOKBACK_DAYS = int(os.environ.get('LOOKBACK_DAYS', 7))
 MAX_CONTENT_CHARS = 3000
 
 PROMPT_TEMPLATE = """你是一位專業金融分析師。請閱讀以下新聞，並嚴格按照指定的 JSON 格式輸出分析結果。
@@ -119,7 +108,7 @@ def _summarize(title: str, content: str) -> tuple[str, list[str]] | None:
     raw = ''
     try:
         resp = requests.post(f'{base_url}/api/generate', json={
-            'model': MODEL,
+            'model': OLLAMA_MODEL,
             'prompt': prompt,
             'stream': False,
             'think': False,
@@ -138,11 +127,11 @@ def _summarize(title: str, content: str) -> tuple[str, list[str]] | None:
         return None
 
 
-def _sheets_write(sheets, range_: str, values: list, retries: int = 3) -> None:
+def _sheets_write(sheets, cnbc_id: str, range_: str, values: list, retries: int = 3) -> None:
     for attempt in range(retries):
         try:
             sheets.update(
-                spreadsheetId=CNBC_ID,
+                spreadsheetId=cnbc_id,
                 range=range_,
                 valueInputOption='RAW',
                 body={'values': values},
@@ -167,10 +156,11 @@ def _col_letter(idx: int) -> str:
 
 
 def main():
-    svc = common.get_sheets_service()
+    svc = data_common.get_sheets_service()
     sheets = svc.spreadsheets().values()
+    cnbc_id = data_common.get_news_sheet_ids()['CNBC']
 
-    result = sheets.get(spreadsheetId=CNBC_ID, range='Sheet1!A:H').execute()
+    result = sheets.get(spreadsheetId=cnbc_id, range='Sheet1!A:H').execute()
     rows = result.get('values', [])
     if not rows:
         print('Sheet is empty')
@@ -183,7 +173,7 @@ def main():
     else:
         summary_col = len(header)
         col_ltr = _col_letter(summary_col)
-        _sheets_write(sheets, f'Sheet1!{col_ltr}1', [[SUMMARY_COL_HEADER]])
+        _sheets_write(sheets, cnbc_id, f'Sheet1!{col_ltr}1', [[SUMMARY_COL_HEADER]])
         print(f'Added "{SUMMARY_COL_HEADER}" header at column {col_ltr}')
 
     col_ltr = _col_letter(summary_col)
@@ -224,12 +214,12 @@ def main():
         result = _summarize(title, content)
         if result:
             summary, llm_tickers = result
-            _sheets_write(sheets, f'Sheet1!{col_ltr}{sheet_row}', [[summary]])
+            _sheets_write(sheets, cnbc_id, f'Sheet1!{col_ltr}{sheet_row}', [[summary]])
             if llm_tickers:
                 existing_tags = row[2] if len(row) > 2 else ''
                 existing_set = {t.strip() for t in existing_tags.split(',') if t.strip()}
                 merged = ','.join(sorted(existing_set | set(llm_tickers)))
-                _sheets_write(sheets, f'Sheet1!{ticker_tag_col_ltr}{sheet_row}', [[merged]])
+                _sheets_write(sheets, cnbc_id, f'Sheet1!{ticker_tag_col_ltr}{sheet_row}', [[merged]])
             updated += 1
             news_id = row[0] if len(row) > 0 else ''
             if news_id:
@@ -248,9 +238,9 @@ def main():
 
 
 def _notify_gas(ids: list) -> None:
-    url = os.environ.get('GAS_WEBHOOK_URL', '')
+    url = data_common.get_config('GAS_WEBHOOK_URL')
     if not url:
-        print('  GAS_WEBHOOK_URL not set, skipping notification')
+        print('  GAS_WEBHOOK_URL not in Config tab, skipping notification')
         return
     try:
         resp = requests.post(

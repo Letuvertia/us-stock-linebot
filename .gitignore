@@ -1,20 +1,23 @@
+# JS deps and build output
 node_modules/
 dist/
-.clasprc.json
-.env
 *.js.map
-*.log
-*.json
-!src/.clasp.json
-!src/appsscript.json
-!src/package.json
-!src/package-lock.json
-!src/tsconfig.json
+
+# Python build artifacts
 __pycache__/
+
+# Local tooling state (per-machine, never committed)
 .claude/
 .gitnexus
+
+# Secrets and credentials
+.secrets/
+.clasprc.json
+.env
+
+# Editor / OS scratch
 *~
 *.un~
-*.xlsx
-helper/
-us-stock-linebot/
+
+# MarketWatch cron resume state (local only)
+.mw_progress.json
