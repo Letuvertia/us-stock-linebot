@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authenticate clasp
+        run: echo '${{ secrets.CLASP_TOKEN }}' > ~/.clasprc.json
+
+      - name: Create tag and GitHub release
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
+          gh release create "${{ inputs.version }}" \
+            --title "Release v${{ inputs.version }}" \
+            --generate-notes
+
+      - name: Set package version
+        run: |
+          jq --arg v "${{ inputs.version }}" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+
+      - name: Build
+        run: npm run build
+
+      - name: Push to Apps Script
+        run: npm run push
+
+      - name: Deploy new version (same URL)
+        env:
+          DEPLOYMENT_ID: ${{ secrets.GAS_DEPLOYMENT_ID }}
+          DEPLOY_DESC: ${{ inputs.version }}
+        run: npm run deploy
+
+      - name: Install triggers
+        run: |
+          npm run install-triggers 2>&1 | tee /tmp/install-trigger.log
+          if grep -qE "Unable to run|Script function not found|^error:" /tmp/install-trigger.log; then
+            echo "::error::clasp run failed — see log above"
+            exit 1
+          fi
