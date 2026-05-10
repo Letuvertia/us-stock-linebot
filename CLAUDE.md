@@ -116,9 +116,21 @@ All collectors write to both per-stock sheets (historical) and StockUniverse (la
 
 ## Secrets & Config
 
-**GAS Script Properties** (set in Apps Script editor): SPREADSHEET_ID, FINNHUB_API_KEY, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, LINE_GROUP_ID, OPENAI_API_KEY
+**Python config is centralized in `scripts/config.py`** — single source of truth for required env vars and tuning constants. Required env vars are checked lazily (raise on import only when accessed), so a missing var fails at script start with a clear `RuntimeError`, not silently mid-run. Tuning constants (Ollama model, MW delays, lookback days) are hardcoded — edit `config.py` to change them, no env override.
 
-**GitHub Actions Secrets**: GOOGLE_SERVICE_ACCOUNT_KEY, SPREADSHEET_ID, FMP_API_KEY, FINNHUB_API_KEY, CLASP_TOKEN
+**Required env vars** (consumed by `scripts/config.py`):
+- `DATA_CREDS_FILE` — service account JSON path for metadata + per-stock spreadsheets
+- `NEWS_CREDS_FILE` — service account JSON path for news spreadsheets
+- `US_STOCK_SPREADSHEET_ID` — metadata spreadsheet (StockUniverse, NewsSheetIDs, Config tabs)
+- `USER_CONFIG_SPREADSHEET_ID` — user-config spreadsheet (industry tags, watchlist)
+
+**API keys** (consumed directly by collectors via `os.environ['NAME']`, no fallback): `FMP_API_KEY`, `FINNHUB_API_KEY` (both comma-separated for round-robin).
+
+**GAS Script Properties** (set in Apps Script editor): `US_STOCK_METADATA_SPREADSHEET_ID`, `LINEBOT_LOGS_SPREADSHEET_ID`, `USER_CONFIG_SPREADSHEET_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_GROUP_ID`, `INSTALL_TRIGGERS_TOKEN`.
+
+**GitHub Actions secrets**: `GOOGLE_SERVICE_ACCOUNT_KEY`, `NEWS_SERVICE_ACCOUNT_KEY`, `US_STOCK_SPREADSHEET_ID`, `USER_CONFIG_SPREADSHEET_ID`, `FMP_API_KEY`, `FINNHUB_API_KEY`, `CLASP_TOKEN`, `GAS_DEPLOYMENT_ID`, `INSTALL_TRIGGERS_TOKEN`.
+
+**Local secrets directory** `.secrets/` (gitignored) holds the service account JSONs that `DATA_CREDS_FILE` and `NEWS_CREDS_FILE` point at locally. CI writes them to `/tmp/gsa.json` and `/tmp/gsa-news.json` from GitHub secrets.
 
 ## Cron Schedules (all times UTC+8)
 

@@ -2,6 +2,7 @@
 """Daily FMP price target collector. Writes to individual stock sheets.
 Free tier: 250 calls/day per key. Multiple keys rotated round-robin.
 """
+import argparse
 import os
 import sys
 import time
@@ -56,7 +57,11 @@ def fmp_get(endpoint: str) -> list | None:
 
 
 def main():
-    batch = os.environ.get('FMP_BATCH', '')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch', choices=['first', 'second'], default=None,
+                        help="'first' = tickers[:250], 'second' = tickers[250:]; omit for all")
+    args = parser.parse_args()
+    batch = args.batch or ''
 
     print(f"[{datetime.now(UTC8)}] Starting FMP target collection (batch={batch or 'all'})...")
 

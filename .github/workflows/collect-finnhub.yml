@@ -25,7 +25,7 @@ jobs:
 
       - name: Run Finnhub collector
         env:
-          GOOGLE_CREDS_FILE: /tmp/gsa.json
+          DATA_CREDS_FILE: /tmp/gsa.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: python scripts/market_data/collect_finnhub.py

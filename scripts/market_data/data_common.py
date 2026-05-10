@@ -1,6 +1,7 @@
 """Shared utilities for data collection scripts."""
 import json
 import os
+import sys
 import time
 import warnings
 from datetime import datetime, timezone, timedelta
@@ -10,6 +11,9 @@ warnings.filterwarnings("ignore")
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import DATA_CREDS_FILE, US_STOCK_SPREADSHEET_ID
 
 UTC8 = timezone(timedelta(hours=8))
 US_EASTERN = ZoneInfo('America/New_York')
@@ -23,9 +27,6 @@ def get_trading_date() -> str:
     """
     return datetime.now(US_EASTERN).strftime('%Y-%m-%d')
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CREDS_FILE = os.environ.get('GOOGLE_CREDS_FILE', os.path.join(_REPO_ROOT, 'juns-stock-agent-5f32b75f7c83.json'))
-US_STOCK_SPREADSHEET_ID = os.environ.get('US_STOCK_SPREADSHEET_ID', '1e_FRJDfF6mwt3FWxMZDuyBKpHCiTFHhsGbppRFCvDXU')
 ROOT_FOLDER_ID = '1kpHXJlv4Abb_S6J8vTSUv44FOQEzDPMu'
 CREATE_SHEETS_STATE_FILE = '/tmp/create_sheets_state.json'
 
@@ -36,7 +37,7 @@ ALL_SCOPES = [
 
 
 def _get_creds():
-    return service_account.Credentials.from_service_account_file(CREDS_FILE, scopes=ALL_SCOPES)
+    return service_account.Credentials.from_service_account_file(DATA_CREDS_FILE, scopes=ALL_SCOPES)
 
 
 def get_sheets_service():
@@ -129,6 +130,18 @@ def get_news_sheet_ids() -> dict[str, str]:
         spreadsheetId=US_STOCK_SPREADSHEET_ID, range='NewsSheetIDs!A2:B'
     ).execute()
     return {r[0]: r[1] for r in result.get('values', []) if len(r) >= 2}
+
+
+def get_config(key: str) -> str | None:
+    """Read a value from the Config tab (cols: Key, Value). Returns None if missing."""
+    sheets = get_sheets_service().spreadsheets().values()
+    result = sheets.get(
+        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='Config!A2:B'
+    ).execute()
+    for row in result.get('values', []):
+        if len(row) >= 2 and row[0] == key:
+            return row[1]
+    return None
 
 
 def get_header_map(sheets_values, spreadsheet_id: str,

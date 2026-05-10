@@ -16,19 +16,22 @@ from datetime import datetime
 import nodriver as uc
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data_common import (
     UTC8, get_sheets_service, get_stock_sheet_ids, get_header_map,
     find_or_create_today_row, write_stock_data, _is_retryable,
     get_trading_date, get_universe_ticker_rows, get_universe_header_map,
     batch_write_universe,
 )
+from config import (
+    MW_REQUEST_DELAY_LO as REQUEST_DELAY_LO,
+    MW_REQUEST_DELAY_HI as REQUEST_DELAY_HI,
+    MW_BACKOFF_PAUSE as BACKOFF_PAUSE,
+    MW_MAX_BLOCKS as MAX_CONSECUTIVE_BLOCKS,
+    MW_MAX_RESTARTS as MAX_RESTART_CYCLES,
+)
 
 MW_BASE = 'https://www.marketwatch.com/investing/stock'
-REQUEST_DELAY_LO = float(os.environ.get('MW_REQUEST_DELAY_LO', '8.0'))
-REQUEST_DELAY_HI = float(os.environ.get('MW_REQUEST_DELAY_HI', '15.0'))
-BACKOFF_PAUSE = float(os.environ.get('MW_BACKOFF_PAUSE', '600.0'))
-MAX_CONSECUTIVE_BLOCKS = int(os.environ.get('MW_MAX_BLOCKS', '5'))
-MAX_RESTART_CYCLES = int(os.environ.get('MW_MAX_RESTARTS', '3'))
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROGRESS_FILE = os.path.join(_SCRIPT_DIR, '.mw_progress.json')

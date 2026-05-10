@@ -44,10 +44,14 @@ jobs:
 
       - name: Run FMP collector
         env:
-          GOOGLE_CREDS_FILE: /tmp/gsa.json
+          DATA_CREDS_FILE: /tmp/gsa.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-          FMP_BATCH: ${{ steps.batch.outputs.batch }}
         run: |
-          echo "Running batch: $FMP_BATCH"
-          python scripts/market_data/collect_fmp.py
+          BATCH="${{ steps.batch.outputs.batch }}"
+          echo "Running batch: $BATCH"
+          if [ "$BATCH" = "all" ]; then
+            python scripts/market_data/collect_fmp.py
+          else
+            python scripts/market_data/collect_fmp.py --batch "$BATCH"
+          fi

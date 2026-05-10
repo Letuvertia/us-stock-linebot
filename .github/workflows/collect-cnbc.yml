@@ -27,7 +27,8 @@ jobs:
 
       - name: Run CNBC news collector
         env:
-          GOOGLE_CREDS_FILE: /tmp/gsa.json
+          DATA_CREDS_FILE: /tmp/gsa.json
           NEWS_CREDS_FILE: /tmp/gsa-news.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
+          USER_CONFIG_SPREADSHEET_ID: ${{ secrets.USER_CONFIG_SPREADSHEET_ID }}
         run: python scripts/market_news/collect_cnbc.py

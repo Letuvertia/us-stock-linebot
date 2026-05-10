@@ -12,14 +12,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from data_common import UTC8, _is_retryable, get_news_sheet_ids, get_sheets_service
-
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-NEWS_CREDS_FILE = os.environ.get('NEWS_CREDS_FILE', os.path.join(
-    _REPO_ROOT, 'juns-stock-agent-f58e7f8b7eba.json',
-))
-USER_CONFIG_SPREADSHEET_ID = os.environ.get(
-    'USER_CONFIG_SPREADSHEET_ID', '1rIVv2lZDrUT7bCO8iXzl5g5J_-BKA7RjusT64akZD0k'
-)
+from config import NEWS_CREDS_FILE, USER_CONFIG_SPREADSHEET_ID
 
 _news_sheet_ids_cache = None
 
