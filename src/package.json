@@ -6,7 +6,6 @@
     "build": "tsc && cp appsscript.json dist/",
     "push": "npx --package @google/clasp@3 clasp push --force",
     "deploy": "npx --package @google/clasp@3 clasp deploy --deploymentId $DEPLOYMENT_ID --description \"$DEPLOY_DESC\"",
-    "install-triggers": "npx --package @google/clasp@3 clasp run installTriggers",
     "open": "npx --package @google/clasp@3 clasp open",
     "logs": "npx --package @google/clasp@3 clasp logs",
     "login": "npx --package @google/clasp@3 clasp login"

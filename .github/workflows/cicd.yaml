@@ -68,8 +68,13 @@ jobs:
 
       - name: Install triggers
         run: |
-          npm run install-triggers 2>&1 | tee /tmp/install-trigger.log
-          if grep -qE "Unable to run|Script function not found|^error:" /tmp/install-trigger.log; then
-            echo "::error::clasp run failed — see log above"
+          URL="https://script.google.com/macros/s/${{ secrets.GAS_DEPLOYMENT_ID }}/exec?action=install-triggers&token=${{ secrets.INSTALL_TRIGGERS_TOKEN }}"
+          response=$(curl -sL -w '\nHTTP_STATUS:%{http_code}' "$URL")
+          status=$(echo "$response" | tail -1 | sed 's/HTTP_STATUS://')
+          body=$(echo "$response" | sed '$d')
+          echo "$status"
+          echo "$body"
+          if [[ "$status" != "200" || "$body" != "OK" ]]; then
+            echo "::error::install-triggers failed"
             exit 1
           fi
