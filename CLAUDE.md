@@ -15,7 +15,7 @@ Repository root holds only docs (`README.md`, `CLAUDE.md`) and two source folder
 
 1. Branch off `main`: `feat/<topic>` for new features, `fix/<topic>` for bug fixes
 2. Make commits as you work
-3. Open a PR with `gh pr create` and write a clear description (Summary + Test plan). Update the description as scope evolves.
+3. Open a PR with `gh pr create` and write a clear description (Summary + Test plan). Update the description as scope evolves. Title format: `[<base-branch>] <type>: <subject>` (e.g. `[main] fix: install triggers via doGet`) so the merge target is visible at a glance.
 4. **Each PR ends with exactly one commit.** As you iterate, squash with `git cpf` (alias for `commit --amend --no-edit && push --force-with-lease`). Never let a PR accumulate fix-up commits.
 5. Merging the PR triggers the CI/CD pipeline on `main`, which auto-bumps the patch version and deploys.
 
