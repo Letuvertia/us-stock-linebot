@@ -133,11 +133,17 @@ def get_news_sheet_ids() -> dict[str, str]:
 
 
 def get_config(key: str) -> str | None:
-    """Read a value from the Config tab (cols: Key, Value). Returns None if missing."""
+    """Read a value from the Config tab (cols: Key, Value). Returns None if the
+    tab or the key is missing — callers handle absence, never crash on it."""
     sheets = get_sheets_service().spreadsheets().values()
-    result = sheets.get(
-        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='Config!A2:B'
-    ).execute()
+    try:
+        result = sheets.get(
+            spreadsheetId=US_STOCK_SPREADSHEET_ID, range='Config!A2:B'
+        ).execute()
+    except Exception as e:
+        # Tab doesn't exist or other read failure — treat as "key not configured"
+        print(f"  Warning: cannot read Config tab ({e}); treating {key!r} as unset")
+        return None
     for row in result.get('values', []):
         if len(row) >= 2 and row[0] == key:
             return row[1]
