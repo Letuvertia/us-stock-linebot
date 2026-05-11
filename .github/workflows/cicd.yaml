@@ -36,7 +36,12 @@ jobs:
         id: version
         working-directory: .
         run: |
-          LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          # Sort by version (refname:short v-style) so 0.1.0 ranks above 0.0.5,
+          # regardless of which was tagged first. git describe orders by tag
+          # creation time which is wrong when release.yaml adds a higher tag
+          # AFTER the auto-bump tag on the same commit.
+          LATEST=$(git tag --sort=-v:refname --merged=HEAD | head -1)
+          LATEST=${LATEST:-0.0.0}
           if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
             IFS='.' read -ra p <<< "$LATEST"
             VERSION="${p[0]:-0}.${p[1]:-0}.$((${p[2]:-0}+1))"
