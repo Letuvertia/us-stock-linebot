@@ -132,18 +132,6 @@ def get_news_sheet_ids() -> dict[str, str]:
     return {r[0]: r[1] for r in result.get('values', []) if len(r) >= 2}
 
 
-def get_config(key: str) -> str | None:
-    """Read a value from the Config tab (cols: Key, Value). Returns None if missing."""
-    sheets = get_sheets_service().spreadsheets().values()
-    result = sheets.get(
-        spreadsheetId=US_STOCK_SPREADSHEET_ID, range='Config!A2:B'
-    ).execute()
-    for row in result.get('values', []):
-        if len(row) >= 2 and row[0] == key:
-            return row[1]
-    return None
-
-
 def get_header_map(sheets_values, spreadsheet_id: str,
                     tab_name: str = 'Daily') -> dict[str, int]:
     """Read header row, return {column_name: 1-based index}."""

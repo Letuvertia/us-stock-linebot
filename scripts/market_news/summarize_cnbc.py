@@ -238,9 +238,9 @@ def main():
 
 
 def _notify_gas(ids: list) -> None:
-    url = data_common.get_config('GAS_WEBHOOK_URL')
+    url = os.environ.get('GAS_WEBHOOK_URL', '')
     if not url:
-        print('  GAS_WEBHOOK_URL not in Config tab, skipping notification')
+        print('  GAS_WEBHOOK_URL not set, skipping notification')
         return
     try:
         resp = requests.post(
