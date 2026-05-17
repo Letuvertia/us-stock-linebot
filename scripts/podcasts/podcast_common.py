@@ -141,13 +141,12 @@ def fetch_podcast_rss(feed_url: str) -> list[dict]:
         headline = _description_headline(item.findtext('description') or '')
         title = f"{rss_title} — {headline}" if headline else rss_title
 
+        # Normalize timezone abbreviations (GMT, UTC) to offset form so %z always works
+        pub_date_norm = pub_date.replace(' GMT', ' +0000').replace(' UTC', ' +0000')
         try:
-            date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %z').replace(tzinfo=None)
+            date = datetime.strptime(pub_date_norm, '%a, %d %b %Y %H:%M:%S %z').astimezone(UTC8).replace(tzinfo=None)
         except ValueError:
-            try:
-                date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z')
-            except ValueError:
-                date = datetime.utcnow()
+            date = datetime.now(UTC8).replace(tzinfo=None)
 
         episodes.append({
             'title': title,
