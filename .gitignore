@@ -21,3 +21,6 @@ __pycache__/
 
 # MarketWatch cron resume state (local only)
 .mw_progress.json
+
+# Podcast audio and transcript files (large binary files, local only)
+podcasts_data/

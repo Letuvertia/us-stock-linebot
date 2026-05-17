@@ -1,0 +1,34 @@
+name: Collect Gooaye Podcast
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # 09:00 UTC = 17:00 UTC+8
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install google-auth google-api-python-client requests
+
+      - name: Write service account credentials
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa.json
+          echo '${{ secrets.NEWS_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa-news.json
+
+      - name: Run Gooaye podcast collector
+        env:
+          DATA_CREDS_FILE: /tmp/gsa.json
+          NEWS_CREDS_FILE: /tmp/gsa-news.json
+          US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
+          USER_CONFIG_SPREADSHEET_ID: ${{ secrets.USER_CONFIG_SPREADSHEET_ID }}
+        run: python scripts/podcasts/collect_gooaye.py
