@@ -42,7 +42,7 @@ def main():
             continue
         new_rows.append([
             str(uuid.uuid4()),
-            ep['date'].strftime('%Y-%m-%d'),
+            ep['date'].strftime('%Y-%m-%d %H:%M:%S'),
             ep['title'],
             ep['duration'],
             ep['audio_url'],

@@ -59,7 +59,7 @@ def main():
 
     downloaded = 0
     for sheet_row, row in to_download:
-        date_str = row[COL_DATE] if len(row) > COL_DATE else 'unknown'
+        date_str = (row[COL_DATE] if len(row) > COL_DATE else 'unknown')[:10]
         title = row[COL_TITLE] if len(row) > COL_TITLE else 'untitled'
         audio_url = row[COL_AUDIO_URL]
 
