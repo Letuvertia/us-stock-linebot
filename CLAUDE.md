@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Repository root holds only docs (`README.md`, `CLAUDE.md`) and two source folders:
 
 - `src/` — GAS TypeScript bot (LINE webhook handlers, scheduled reports). All build files live here: `package.json`, `tsconfig.json`, `.clasp.json`, `appsscript.json`. Run `npm` commands from `src/`.
-- `scripts/` — Python collectors. Two main subfolders: `market_data/` (price/quote collectors) and `market_news/` (CNBC/Reuters news + summarizer).
+- `scripts/` — Python collectors. Three main subfolders: `market_data/` (price/quote collectors), `market_news/` (CNBC/Reuters news + summarizer), and `podcasts/` (Gooaye podcast pipeline).
 
 ## Developer workflow
 
@@ -90,6 +90,16 @@ All use Google service account auth. Timestamps use UTC+8. Scripts live in `scri
 | `summarize_cnbc.py` | Local cron hourly :05 | LLM summarization → notify GAS webhook → real-time LINE push |
 | `cleanup_news.py` | Daily 2:47 AM | Deletes news rows older than 7 days |
 
+**Podcast scripts** (`scripts/podcasts/`): run as local cron only (transcription is CPU-heavy):
+
+| Script | Schedule | What it does |
+|---|---|---|
+| `collect_gooaye.py` | Daily 17:00 UTC+8 | SoundOn RSS → Gooaye sheet (dedup by AudioURL) |
+| `download_gooaye.py` | Daily 17:30 UTC+8 | Download MP3 → `podcasts_data/gooaye/` (gitignored) |
+| `transcribe_gooaye.py` | Daily 18:00 UTC+8 | faster-whisper large-v3 → `.txt` transcript |
+
+Gooaye spreadsheet ID: `1_05m4vibWbXNoTAZ3nMjyHdKZoCm2By0yx67Zr2G3ig` (registered in `PodcastSheetIDs` tab of main spreadsheet). Shared module: `scripts/podcasts/podcast_common.py`.
+
 **Shared modules**: `scripts/market_data/data_common.py` (Sheets helpers, stock sheet CRUD, universe batch writes), `scripts/market_news/news_common.py` (anti-bot headers, ticker keyword matching, article extraction)
 
 ### Google Sheets Architecture
@@ -143,6 +153,9 @@ All collectors write to both per-stock sheets (historical) and StockUniverse (la
 - News cleanup: 2:47 AM daily
 - GAS pre-market scan: 20:30
 - GAS post-market scan: 05:30
+- Podcast collect: 17:00 daily (local cron)
+- Podcast download: 17:30 daily (local cron)
+- Podcast transcribe: 18:00 daily (local cron)
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
