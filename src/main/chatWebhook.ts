@@ -64,37 +64,46 @@ function _ack(replyToken: string): void {
 }
 
 function _dispatch(text: string, replyToken: string): void {
+  const fnName = '_dispatch';
+
   if (text.includes('新聞')) {
     const result = queryNewsByTicker(text);
     if (result !== null) {
+      logInfo(fnName, `新聞 match (${result.length} chars) — sending push`);
       _ack(replyToken);
       sendPushMessage(`${result}\n\n${_helpText()}`);
       return;
     }
+    logWarn(fnName, `新聞 branch: no ticker match for: ${truncate(text, 80)}`);
   }
 
   if (text.includes('目標價')) {
-    const result = queryTargetPriceByCategory(text);
-    if (result !== null) {
+    const categoryResult = queryTargetPriceByCategory(text);
+    if (categoryResult !== null) {
+      logInfo(fnName, `目標價 category match (${categoryResult.length} chars) — sending push`);
       _ack(replyToken);
-      sendPushMessage(`${result}\n\n${_helpText()}`);
+      sendPushMessage(`${categoryResult}\n\n${_helpText()}`);
       return;
     }
     const single = queryTargetPriceSingle(text);
     if (single !== null) {
+      logInfo(fnName, `目標價 single match (${single.length} chars) — sending push`);
       _ack(replyToken);
       sendPushMessage(`${single}\n\n${_helpText()}`);
       return;
     }
+    logWarn(fnName, `目標價 branch: no match for: ${truncate(text, 80)}`);
   }
 
   if (/p\/?e/i.test(text)) {
     const result = queryPeerPeByCategory(text);
     if (result !== null) {
+      logInfo(fnName, `P/E match (${result.length} chars) — sending push`);
       _ack(replyToken);
       sendPushMessage(`${result}\n\n${_helpText()}`);
       return;
     }
+    logWarn(fnName, `P/E branch: no category match for: ${truncate(text, 80)}`);
   }
 
   // Fallback: random reaction
