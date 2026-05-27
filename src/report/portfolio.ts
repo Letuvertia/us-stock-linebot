@@ -140,7 +140,7 @@ function _colIndex(letter: string): number {
 
 // ── Main report ──────────────────────────────────────────────────────────────
 
-function executePortfolioReport(label?: string): void {
+function executePortfolioReport(label?: string, replyToken?: string): void {
   const fnName = 'executePortfolioReport';
 
   if (!label) {
@@ -281,6 +281,11 @@ function executePortfolioReport(label?: string): void {
     lines.push(`${netEmoji}總資產: ${netSign}${_fmtNtd(Math.abs(Math.round(totalAssetNtd)))} (${_pct(ror, false)})`);
   }
 
-  sendPushMessage(lines.join('\n'));
-  logInfo(fnName, 'Portfolio report sent');
+  const message = lines.join('\n');
+  if (replyToken) {
+    sendReplyMessage(replyToken, message);
+  } else {
+    sendPushMessage(message);
+  }
+  logInfo(fnName, `Portfolio report sent (${replyToken ? 'reply' : 'push'})`);
 }

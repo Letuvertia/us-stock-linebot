@@ -52,12 +52,15 @@ function sendReplyMessage(replyToken: string, text: string): void {
   const chunks = splitLongMessage(text);
   const messages = chunks.map(chunk => ({ type: 'text', text: chunk }));
 
-  UrlFetchApp.fetch(LINE_REPLY_URL, {
+  const resp = UrlFetchApp.fetch(LINE_REPLY_URL, {
     method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
     headers: _lineHeaders(),
     payload: JSON.stringify({ replyToken, messages: messages.slice(0, 5) }),
     muteHttpExceptions: true,
   });
+  if (resp.getResponseCode() !== 200) {
+    logError('sendReplyMessage', `LINE API ${resp.getResponseCode()}: ${resp.getContentText().slice(0, 300)}`);
+  }
 }
 
 function sendPushMessage(text: string): void {
@@ -65,12 +68,15 @@ function sendPushMessage(text: string): void {
   const chunks = splitLongMessage(text);
   const messages = chunks.map(chunk => ({ type: 'text', text: chunk }));
 
-  UrlFetchApp.fetch(LINE_PUSH_URL, {
+  const resp = UrlFetchApp.fetch(LINE_PUSH_URL, {
     method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
     headers: _lineHeaders(),
     payload: JSON.stringify({ to: groupId, messages: messages.slice(0, 5) }),
     muteHttpExceptions: true,
   });
+  if (resp.getResponseCode() !== 200) {
+    logError('sendPushMessage', `LINE API ${resp.getResponseCode()}: ${resp.getContentText().slice(0, 300)}`);
+  }
 }
 
 function splitLongMessage(text: string, maxLen: number = 4900): string[] {

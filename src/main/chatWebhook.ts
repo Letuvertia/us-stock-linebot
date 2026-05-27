@@ -51,50 +51,49 @@ function _stripTrigger(text: string): string {
   return noMention.startsWith('皮皮') ? noMention.slice(2).trim() : noMention;
 }
 
-const ACK_MESSAGES = [
-  '(皮皮咚咚咚跑出門去了)',
-  '(皮皮耳朵一豎衝出去了)',
-  '(皮皮嗖的一聲不見了)',
-  '(皮皮已經在路上了)',
-];
-
-function _ack(replyToken: string): void {
-  const msg = ACK_MESSAGES[Math.floor(Math.random() * ACK_MESSAGES.length)];
-  sendReplyMessage(replyToken, msg);
-}
-
 function _dispatch(text: string, replyToken: string): void {
+  const fnName = '_dispatch';
+
+  if (/持股|持倉|倉位|部位/.test(text)) {
+    logInfo(fnName, '持股 match — sending portfolio reply');
+    executePortfolioReport(undefined, replyToken);
+    return;
+  }
+
   if (text.includes('新聞')) {
     const result = queryNewsByTicker(text);
     if (result !== null) {
-      _ack(replyToken);
-      sendPushMessage(`${result}\n\n${_helpText()}`);
+      logInfo(fnName, `新聞 match (${result.length} chars) — sending reply`);
+      sendReplyMessage(replyToken, `${result}\n\n${_helpText()}`);
       return;
     }
+    logWarn(fnName, `新聞 branch: no ticker match for: ${truncate(text, 80)}`);
   }
 
   if (text.includes('目標價')) {
-    const result = queryTargetPriceByCategory(text);
-    if (result !== null) {
-      _ack(replyToken);
-      sendPushMessage(`${result}\n\n${_helpText()}`);
+    const categoryResult = queryTargetPriceByCategory(text);
+    if (categoryResult !== null) {
+      logInfo(fnName, `目標價 category match (${categoryResult.length} chars) — sending reply`);
+      sendReplyMessage(replyToken, `${categoryResult}\n\n${_helpText()}`);
       return;
     }
     const single = queryTargetPriceSingle(text);
     if (single !== null) {
-      _ack(replyToken);
-      sendPushMessage(`${single}\n\n${_helpText()}`);
+      logInfo(fnName, `目標價 single match (${single.length} chars) — sending reply`);
+      sendReplyMessage(replyToken, `${single}\n\n${_helpText()}`);
       return;
     }
+    logWarn(fnName, `目標價 branch: no match for: ${truncate(text, 80)}`);
   }
 
   if (/p\/?e/i.test(text)) {
     const result = queryPeerPeByCategory(text);
     if (result !== null) {
-      _ack(replyToken);
-      sendPushMessage(`${result}\n\n${_helpText()}`);
+      logInfo(fnName, `P/E match (${result.length} chars) — sending reply`);
+      sendReplyMessage(replyToken, `${result}\n\n${_helpText()}`);
       return;
     }
+    logWarn(fnName, `P/E branch: no category match for: ${truncate(text, 80)}`);
   }
 
   // Fallback: random reaction
