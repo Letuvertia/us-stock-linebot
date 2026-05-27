@@ -60,11 +60,35 @@ function _dispatch(text: string, replyToken: string): void {
     return;
   }
 
+  const recentNewsMatch = /最近([1-3一二三]?)天/.exec(text);
+  if (recentNewsMatch && text.includes('新聞')) {
+    const charMap: Record<string, number> = { '1': 1, '2': 2, '3': 3, '一': 1, '二': 2, '三': 3 };
+    const days = charMap[recentNewsMatch[1]] ?? 1;
+    const result = queryRecentNewsSummaries(days);
+    if (result !== null) {
+      logInfo(fnName, `最近${days}天新聞 match (${result.length} chars) — sending reply`);
+      sendReplyMessage(replyToken, `${result}\n\n${_helpText()}`);
+    } else {
+      sendReplyMessage(replyToken, `📰 最近 ${days} 天內無新聞摘要\n\n${_helpText()}`);
+    }
+    return;
+  }
+
   if (text.includes('新聞')) {
     const result = queryNewsByTicker(text);
     if (result !== null) {
       logInfo(fnName, `新聞 match (${result.length} chars) — sending reply`);
       sendReplyMessage(replyToken, `${result}\n\n${_helpText()}`);
+      return;
+    }
+    if (/最近/.test(text)) {
+      const recent = queryRecentNewsSummaries(1);
+      if (recent !== null) {
+        logInfo(fnName, `最近新聞 fallback — sending 1d reply`);
+        sendReplyMessage(replyToken, `${recent}\n\n${_helpText()}`);
+      } else {
+        sendReplyMessage(replyToken, `📰 最近 1 天內無新聞摘要\n\n${_helpText()}`);
+      }
       return;
     }
     logWarn(fnName, `新聞 branch: no ticker match for: ${truncate(text, 80)}`);

@@ -71,6 +71,50 @@ function queryNewsByTicker(query: string): string | null {
   return msg;
 }
 
+// ===== LINE chat query: recent news by day count =====
+
+function queryRecentNewsSummaries(days: number): string | null {
+  const fnName = 'queryRecentNewsSummaries';
+
+  const sheetId = getNewsSheetId('CNBC');
+  const ss = SpreadsheetApp.openById(sheetId);
+  const sheet = ss.getSheets()[0];
+  const rows = sheet.getDataRange().getValues() as string[][];
+
+  const cutoff = new Date(Date.now() - days * 86400000);
+  const stockMap = _buildStockMap();
+
+  const articles = rows.slice(1).filter(r => {
+    const dateStr = String(r[1] || '');
+    const summary = String(r[7] || '').trim();
+    if (!dateStr || !summary) return false;
+    const d = new Date(dateStr);
+    return !isNaN(d.getTime()) && d >= cutoff;
+  });
+
+  if (articles.length === 0) return null;
+
+  articles.sort((a, b) => new Date(String(a[1])).getTime() - new Date(String(b[1])).getTime());
+
+  const total = articles.length;
+
+  let msg = `📰 最近 ${days} 天新聞摘要 (共 ${total} 則)\n──────────────\n\n`;
+  msg += articles.map(r => {
+    const date = String(r[1] || '').slice(0, 10);
+    const title = String(r[3] || '').trim();
+    const url = String(r[5] || '').trim();
+    const summary = String(r[7] || '').trim();
+    const monthDay = date.length >= 10 ? `${parseInt(date.slice(5, 7))}/${parseInt(date.slice(8, 10))}` : date;
+    let entry = `▸ (${monthDay}) ${title}`;
+    if (url) entry += `\n${url}`;
+    if (summary) entry += `\n${_injectPrices(summary, stockMap)}`;
+    return entry;
+  }).join('\n\n');
+
+  logInfo(fnName, `${days}d query: ${total} articles`);
+  return msg;
+}
+
 // ===== Daily batch report (legacy; replaced by real-time push below) =====
 
 function executeDailyNewsReport(): void {
