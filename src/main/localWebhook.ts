@@ -28,6 +28,10 @@ function handleLocalWebhook(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript
       withErrorHandling('handleSummariesUpdated', () => handleSummariesUpdated(body.ids || []));
       return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
     }
+    if (body.event === 'podcast_summarized') {
+      withErrorHandling('handlePodcastSummarized', () => handlePodcastSummarized(body));
+      return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
+    }
   } catch (_) {
     // not JSON or missing event field — fall through to LINE chat webhook handler
   }
