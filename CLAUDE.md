@@ -13,6 +13,12 @@ Repository root holds only docs (`README.md`, `CLAUDE.md`) and two source folder
 
 **Every change goes through a branch + PR — never commit directly to `main`.**
 
+**Before making any code change:**
+1. Run `git branch --show-current` to confirm which branch you are on.
+2. Run `gh pr list --state all --limit 5` to check if the current branch's PR is already merged. Use `gh`, not `git branch --merged`, as the authoritative source.
+3. If the branch is already merged, switch to `main` (`git checkout main && git pull`) and branch from there.
+4. If the change is unrelated to the current branch's topic, always branch from the latest `main`.
+
 1. Branch off `main`: `feat/<topic>` for new features, `fix/<topic>` for bug fixes
 2. Make commits as you work
 3. Open a PR with `gh pr create` and write a clear description (Summary + Test plan). Update the description as scope evolves. Title format: `[<base-branch>] <type>: <subject>` (e.g. `[main] fix: install triggers via doGet`) so the merge target is visible at a glance.
@@ -137,6 +143,8 @@ All collectors write to both per-stock sheets (historical) and StockUniverse (la
 **API keys** (consumed directly by collectors via `os.environ['NAME']`, no fallback): `FMP_API_KEY`, `FINNHUB_API_KEY` (both comma-separated for round-robin).
 
 **GAS Script Properties** (set in Apps Script editor): `US_STOCK_METADATA_SPREADSHEET_ID`, `LINEBOT_LOGS_SPREADSHEET_ID`, `USER_CONFIG_SPREADSHEET_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_GROUP_ID`, `INSTALL_TRIGGERS_TOKEN`.
+
+**GCP project**: `juns-stock-agent` — linked to the Apps Script. Use `npx clasp logs --projectId juns-stock-agent` from `src/` to tail GAS execution logs.
 
 **GitHub Actions secrets**: `GOOGLE_SERVICE_ACCOUNT_KEY`, `NEWS_SERVICE_ACCOUNT_KEY`, `US_STOCK_SPREADSHEET_ID`, `USER_CONFIG_SPREADSHEET_ID`, `FMP_API_KEY`, `FINNHUB_API_KEY`, `CLASP_TOKEN`, `GAS_DEPLOYMENT_ID`, `INSTALL_TRIGGERS_TOKEN`.
 
