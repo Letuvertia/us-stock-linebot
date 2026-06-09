@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Repository root holds only docs (`README.md`, `CLAUDE.md`) and two source folders:
 
 - `src/` — GAS TypeScript bot (LINE webhook handlers, scheduled reports). All build files live here: `package.json`, `tsconfig.json`, `.clasp.json`, `appsscript.json`. Run `npm` commands from `src/`.
-- `scripts/` — Python collectors. Three main subfolders: `market_data/` (price/quote collectors), `market_news/` (CNBC/Reuters news + summarizer), and `podcasts/` (Gooaye podcast pipeline).
+- `scripts/` — Python collectors. Three main subfolders: `market_data/` (price/quote collectors), `market_news/` (CNBC/Reuters news + summarizer), and `podcasts/` (podcast pipelines: `gooaye/` for 股癌, `richwomen/` for 代代財女).
 
 ## Developer workflow
 
@@ -96,15 +96,29 @@ All use Google service account auth. Timestamps use UTC+8. Scripts live in `scri
 | `summarize_cnbc.py` | Local cron hourly :05 | LLM summarization → notify GAS webhook → real-time LINE push |
 | `cleanup_news.py` | Daily 2:47 AM | Deletes news rows older than 7 days |
 
-**Podcast scripts** (`scripts/podcasts/`): run as local cron only (transcription is CPU-heavy):
+**Podcast scripts** (`scripts/podcasts/`): run as local cron only (transcription is CPU-heavy). Each show has its own subfolder. Shared module: `scripts/podcasts/podcast_common.py`.
+
+**Gooaye 股癌** (`scripts/podcasts/gooaye/`):
 
 | Script | Schedule | What it does |
 |---|---|---|
 | `collect_gooaye.py` | Daily 17:00 UTC+8 | SoundOn RSS → Gooaye sheet (dedup by AudioURL) |
 | `download_gooaye.py` | Daily 17:30 UTC+8 | Download MP3 → `podcasts_data/gooaye/` (gitignored) |
-| `transcribe_gooaye.py` | Daily 18:00 UTC+8 | faster-whisper large-v3 → `.txt` transcript |
+| `transcribe_gooaye.py` | Daily 18:00 UTC+8 | faster-whisper medium → `.txt` transcript |
+| `summarize_gooaye.py` | Daily 19:00 UTC+8 | Ollama JSON summary → sheet col K → GAS LINE push |
 
-Gooaye spreadsheet ID: `1_05m4vibWbXNoTAZ3nMjyHdKZoCm2By0yx67Zr2G3ig` (registered in `PodcastSheetIDs` tab of main spreadsheet). Shared module: `scripts/podcasts/podcast_common.py`.
+Gooaye spreadsheet ID: `1_05m4vibWbXNoTAZ3nMjyHdKZoCm2By0yx67Zr2G3ig` (registered as `Gooaye` in `PodcastSheetIDs` tab).
+
+**代代財女 RichWomen** (`scripts/podcasts/richwomen/`):
+
+| Script | Schedule | What it does |
+|---|---|---|
+| `collect_richwomen.py` | Daily 17:05 UTC+8 | Firstory RSS → RichWomen sheet (dedup by AudioURL) |
+| `download_richwomen.py` | Daily 17:35 UTC+8 | Download MP3 → `podcasts_data/richwomen/` (gitignored) |
+| `transcribe_richwomen.py` | Daily 18:05 UTC+8 | faster-whisper medium → `.txt` transcript |
+| `summarize_richwomen.py` | Daily 19:05 UTC+8 | Ollama JSON summary → sheet col K → GAS LINE push |
+
+RichWomen spreadsheet ID registered as `RichWomen` in `PodcastSheetIDs` tab. One-time setup: `python3 scripts/podcasts/setup_richwomen_sheet.py <SHEET_ID>`.
 
 **Shared modules**: `scripts/market_data/data_common.py` (Sheets helpers, stock sheet CRUD, universe batch writes), `scripts/market_news/news_common.py` (anti-bot headers, ticker keyword matching, article extraction)
 
@@ -161,9 +175,10 @@ All collectors write to both per-stock sheets (historical) and StockUniverse (la
 - News cleanup: 2:47 AM daily
 - GAS pre-market scan: 20:30
 - GAS post-market scan: 05:30
-- Podcast collect: 17:00 daily (local cron)
-- Podcast download: 17:30 daily (local cron)
-- Podcast transcribe: 18:00 daily (local cron)
+- Gooaye collect: 17:00 / RichWomen collect: 17:05 (local cron)
+- Gooaye download: 17:30 / RichWomen download: 17:35 (local cron)
+- Gooaye transcribe: 18:00 / RichWomen transcribe: 18:05 (local cron)
+- Gooaye summarize: 19:00 / RichWomen summarize: 19:05 (local cron)
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

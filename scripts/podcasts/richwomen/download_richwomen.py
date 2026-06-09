@@ -1,7 +1,7 @@
-"""Download Gooaye 股癌 MP3 files for episodes not yet downloaded.
+"""Download 代代財女 MP3 files for episodes not yet downloaded.
 
-Cron: 30 9 * * * (daily at 09:30 UTC = 17:30 UTC+8, after collect)
-Saves to podcasts_data/gooaye/<date>-<slug>.mp3 (repo root relative).
+Cron: 35 9 * * * (daily at 09:35 UTC = 17:35 UTC+8, after collect)
+Saves to podcasts_data/richwomen/<date>-<slug>.mp3 (repo root relative).
 Updates DownloadedAt (col G) and LocalMP3 (col H) in the sheet.
 """
 import os
@@ -12,7 +12,8 @@ from pathlib import Path
 
 import requests
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'market_data'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'market_data'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from data_common import UTC8
 from podcast_common import (
@@ -21,10 +22,9 @@ from podcast_common import (
     sheets_update_with_retry,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = REPO_ROOT / 'podcasts_data' / 'gooaye'
+REPO_ROOT = Path(__file__).resolve().parents[3]
+OUTPUT_DIR = REPO_ROOT / 'podcasts_data' / 'richwomen'
 
-# Column indices (0-based in values list)
 COL_DATE = 1
 COL_TITLE = 2
 COL_AUDIO_URL = 4
@@ -37,13 +37,13 @@ def _slug(title: str) -> str:
 
 
 def main():
-    print(f"[{datetime.now(UTC8)}] Starting Gooaye MP3 download...")
+    print(f"[{datetime.now(UTC8)}] Starting 代代財女 MP3 download...")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    gooaye_sid = get_podcast_spreadsheet_id('Gooaye')
+    sid = get_podcast_spreadsheet_id('RichWomen')
     sheets = get_podcast_sheets_service().spreadsheets().values()
 
-    result = sheets.get(spreadsheetId=gooaye_sid, range='Sheet1!A2:J').execute()
+    result = sheets.get(spreadsheetId=sid, range='Sheet1!A2:J').execute()
     rows = result.get('values', [])
     if not rows:
         print("No episodes in sheet")
@@ -76,7 +76,6 @@ def main():
                 resp = requests.get(audio_url, stream=True, timeout=60,
                                     headers={'User-Agent': 'python-podcast-downloader/1.0'})
                 resp.raise_for_status()
-                total = int(resp.headers.get('content-length', 0))
                 downloaded_bytes = 0
                 with open(local_path, 'wb') as f:
                     for chunk in resp.iter_content(chunk_size=1024 * 256):
@@ -92,7 +91,7 @@ def main():
 
         now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
         sheets_update_with_retry(
-            sheets, gooaye_sid, f'Sheet1!G{sheet_row}:H{sheet_row}',
+            sheets, sid, f'Sheet1!G{sheet_row}:H{sheet_row}',
             [[now, rel_path]],
         )
         downloaded += 1
