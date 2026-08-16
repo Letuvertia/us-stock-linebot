@@ -156,6 +156,7 @@ All spreadsheets are stored under Google Drive directory `1kpHXJlv4Abb_S6J8vTSUv
    * Columns: `ID`, `Date`, `Title`, `Duration`, `AudioURL`, `EpisodeURL`, `DownloadedAt`, `LocalMP3`, `TranscribedAt`, `LocalTXT`, `Summary`.
 5. **User Config Spreadsheet (`USER_CONFIG_SPREADSHEET_ID`)**:
    * `UserHoldings`: User portfolio positions, cost bases, and loan configurations.
+   * `UserHoldingTransactions`: Historical trade, dividend, and foreign exchange transactions.
    * `News Keywords`: Custom keyword and alias dictionary for news ticker tagging to avoid false positives on short tickers (e.g. `A`, `ON`, `IT`).
    * `Industry Category`: Standardized and customized sector/industry categorizations.
 6. **System Logs Spreadsheet (`LINEBOT_LOGS_SPREADSHEET_ID`)**:
