@@ -62,5 +62,5 @@ Google Sheets serves as the database for market quotes, news, podcast transcript
   - `PodcastSheetIDs`: Maps podcast shows (e.g. `Gooaye`, `RichWomen`) to their transcript/summary spreadsheet IDs.
 
 - **User Config Spreadsheet (`USER_CONFIG_SPREADSHEET_ID`)**:
-  - Stores user portfolio allocations (`UserHoldings`), news keyword preferences (`News Keywords`), and customized industry classifications (`Industry Category`).
+  - Stores user portfolio allocations (`UserHoldings`), historical trade and foreign exchange transactions (`UserHoldingTransactions`), news keyword preferences (`News Keywords`), and customized industry classifications (`Industry Category`).
 
