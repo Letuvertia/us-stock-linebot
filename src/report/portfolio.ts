@@ -212,7 +212,7 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
           `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
           `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 0)}`,
           `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 0)}`,
-          `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 0)} (${Math.abs(plPct).toFixed(2)}%)`,
+          `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 0)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
         );
       } else {
         const pl = Math.round((localAsset - row.totalCost) * 100) / 100;
@@ -222,7 +222,7 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
           `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
           `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 2)}`,
           `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 2)}`,
-          `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 2)} (${Math.abs(plPct).toFixed(2)}%)`,
+          `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 2)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
         );
       }
     }
