@@ -2,19 +2,22 @@
 
 Cron: 0 11 * * * (daily at 11:00 UTC = 19:00 UTC+8, after transcription)
 Reads rows where LocalTXT is set and Summary (col K) is empty.
-Calls Ollama with a finance-focused prompt, writes the summary back to col K,
+Calls Ollama with JSON-format output, formats into bullet list, writes to col K,
 then POSTs podcast_summarized to GAS to trigger a LINE push.
 """
 import argparse
+import json
 import os
 import sys
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 
 import requests
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'market_data'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'market_data'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from data_common import UTC8
 from config import OLLAMA_MODEL
@@ -24,7 +27,7 @@ from podcast_common import (
     sheets_update_with_retry,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Column indices (0-based in values list)
 COL_TITLE = 2
@@ -33,53 +36,43 @@ COL_LOCAL_TXT = 9
 COL_SUMMARY = 10
 
 PROMPT_TEMPLATE = """\
-你是一個專業的財經 podcast 摘要助手。
+你是一位專業股票研究員（Sell-side Equity Analyst）。
 
-請閱讀以下逐字稿內容，並僅整理「與股票、投資、金融市場、總體經濟、公司營運、產業趨勢」相關的資訊。
+請閱讀以下 Podcast 逐字稿，忽略所有閒聊、業配、個人故事與非投資內容。
 
-忽略以下內容：
-- 主持人閒聊
-- 個人生活故事
-- 情緒抒發
-- 玩笑與垃圾話
-- 業配與贊助商內容
-- 與投資無關的科技或娛樂話題
-- 重複內容
-- 無資訊量的口語填充詞
+請特別關注：個股、公司、產業、漲價、缺貨、擴產、AI供應鏈、法說會、財報、毛利率、EPS、資金流向。
 
-請特別關注：
-- 股票名稱與公司
-- 產業趨勢（AI、半導體、雲端、能源等）
-- 財報與法說會
-- 營收、EPS、毛利率、估值
-- 市場觀點與投資邏輯
-- 總經（利率、Fed、通膨、景氣）
-- 資金流向與市場情緒
-- 投資風險與催化因素
+若逐字稿完全沒有投資相關內容，所有欄位填空陣列。
 
-輸出要求：
-1. 使用繁體中文
-2. 總長度限制在 300 字以內
-3. 使用「主題式條列摘要」
-4. 每點盡量精簡且高資訊密度
+請嚴格輸出以下 JSON 格式，不要輸出任何其他文字：
 
-輸出格式：
-【主題】
-- 重點1
-- 重點2
+{{
+  "core_thesis": ["最重要的投資觀點，最多3點，每點一句話"],
+  "stocks": [
+    {{"name": "公司或產業名稱", "sentiment": "偏多/偏空/中立", "reason": "理由", "catalyst": "催化劑"}}
+  ],
+  "indicators": ["未來1~3個月可觀察的驗證指標，最多3點"]
+}}
 
-【另一主題】
-- 重點1
-- 重點2
-
-以下是逐字稿：
+逐字稿：
 
 {transcript}
 """
 
 
+def _wsl_host() -> str:
+    try:
+        out = subprocess.check_output(['ip', 'route', 'show', 'default'], text=True)
+        for part in out.split():
+            if part not in ('default', 'via', 'dev', 'proto', 'kernel', 'src'):
+                return part
+    except Exception:
+        pass
+    return 'host.docker.internal'
+
+
 def _ollama_base_url() -> str:
-    for host in ('localhost', 'host.docker.internal'):
+    for host in ('localhost', _wsl_host()):
         url = f'http://{host}:11434'
         try:
             requests.get(f'{url}/api/tags', timeout=2)
@@ -89,9 +82,41 @@ def _ollama_base_url() -> str:
     return 'http://localhost:11434'
 
 
+def _format_summary(data: dict) -> str:
+    """Convert parsed JSON into a compact bullet-list string."""
+    lines = []
+
+    thesis = [t.strip() for t in data.get('core_thesis', []) if t.strip()]
+    if thesis:
+        lines.append('【核心觀點】')
+        lines.extend(f'- {t}' for t in thesis)
+
+    stocks = [s for s in data.get('stocks', []) if s.get('name')]
+    if stocks:
+        lines.append('【個股與產業】')
+        for s in stocks:
+            sentiment = s.get('sentiment', '')
+            reason = s.get('reason', '')
+            catalyst = s.get('catalyst', '')
+            detail = ' — '.join(p for p in [reason, catalyst] if p)
+            lines.append(f'- {s["name"]}（{sentiment}）：{detail}' if detail else f'- {s["name"]}（{sentiment}）')
+
+    indicators = [i.strip() for i in data.get('indicators', []) if i.strip()]
+    if indicators:
+        lines.append('【驗證指標】')
+        lines.extend(f'- {i}' for i in indicators)
+
+    if not lines:
+        return '本集無投資相關內容'
+
+    return '\n'.join(lines)
+
+
 def _summarize(transcript: str) -> str | None:
+    """Call Ollama with JSON format, return formatted bullet-list string or None."""
     base_url = _ollama_base_url()
     prompt = PROMPT_TEMPLATE.format(transcript=transcript)
+    raw = ''
     try:
         resp = requests.post(
             f'{base_url}/api/generate',
@@ -100,12 +125,17 @@ def _summarize(transcript: str) -> str | None:
                 'prompt': prompt,
                 'stream': False,
                 'think': False,
+                'format': 'json',
                 'options': {'temperature': 0.3, 'num_ctx': 32768},
             },
-            timeout=300,
         )
         resp.raise_for_status()
-        return resp.json().get('response', '').strip()
+        raw = resp.json().get('response', '').strip()
+        data = json.loads(raw)
+        return _format_summary(data)
+    except json.JSONDecodeError as e:
+        print(f'    ✗ JSON parse error: {e} — raw: {raw[:200]}')
+        return None
     except Exception as e:
         print(f'    ✗ Ollama error: {e}')
         return None
@@ -146,6 +176,7 @@ def _process_row(sheets, gooaye_sid: str, sheet_row: int, row: list, txt_path: P
         print('    transcript file is empty, skipping')
         return False
 
+    print(f'    transcript: {len(transcript)} chars', flush=True)
     summary = _summarize(transcript)
     if not summary:
         return False
@@ -191,7 +222,7 @@ def main():
     summarized = sum(
         1 for sheet_row, row, txt_path in to_summarize
         if _process_row(sheets, gooaye_sid, sheet_row, row, txt_path)
-        or not time.sleep(2)  # sleep between episodes, always continue
+        or not time.sleep(2)
     )
 
     print(f'\nDone. Summarized {summarized}/{len(to_summarize)} episode(s)')

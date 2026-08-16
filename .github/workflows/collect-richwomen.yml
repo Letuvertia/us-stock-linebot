@@ -1,8 +1,8 @@
-name: Collect Gooaye Podcast
+name: Collect RichWomen Podcast
 
 on:
   schedule:
-    - cron: '0 9 * * *'   # 09:00 UTC = 17:00 UTC+8
+    - cron: '5 9 * * *'   # 09:05 UTC = 17:05 UTC+8
   workflow_dispatch:
 
 jobs:
@@ -25,10 +25,10 @@ jobs:
           echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa.json
           echo '${{ secrets.NEWS_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa-news.json
 
-      - name: Run Gooaye podcast collector
+      - name: Run RichWomen podcast collector
         env:
           DATA_CREDS_FILE: /tmp/gsa.json
           NEWS_CREDS_FILE: /tmp/gsa-news.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
           USER_CONFIG_SPREADSHEET_ID: ${{ secrets.USER_CONFIG_SPREADSHEET_ID }}
-        run: python scripts/podcasts/gooaye/collect_gooaye.py
+        run: python scripts/podcasts/richwomen/collect_richwomen.py

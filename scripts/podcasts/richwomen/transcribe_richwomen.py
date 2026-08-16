@@ -1,6 +1,6 @@
-"""Transcribe Gooaye 股癌 MP3 files using faster-whisper medium.
+"""Transcribe 代代財女 MP3 files using faster-whisper medium.
 
-Cron: 0 10 * * * (daily at 10:00 UTC = 18:00 UTC+8, after download)
+Cron: 5 10 * * * (daily at 10:05 UTC = 18:05 UTC+8, after download)
 Reads rows where LocalMP3 is set and TranscribedAt is empty.
 Saves transcript to <same-path>.txt (replacing .mp3 extension).
 Updates TranscribedAt (col I) and LocalTXT (col J) in the sheet.
@@ -18,7 +18,8 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'market_data'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'market_data'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from data_common import UTC8
 from podcast_common import (
@@ -27,10 +28,9 @@ from podcast_common import (
     sheets_update_with_retry,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 CHUNK_SECONDS = 60
 
-# Column indices (0-based in values list)
 COL_LOCAL_MP3 = 7
 COL_TRANSCRIBED_AT = 8
 COL_LOCAL_TXT = 9
@@ -48,7 +48,6 @@ def _load_whisper():
 
 
 def _split_mp3(mp3_path: Path, chunk_dir: Path) -> list[Path]:
-    """Split mp3 into CHUNK_SECONDS-second pieces using ffmpeg (stream copy, no re-encode)."""
     pattern = str(chunk_dir / "chunk_%04d.mp3")
     subprocess.run(
         [
@@ -65,39 +64,28 @@ def _split_mp3(mp3_path: Path, chunk_dir: Path) -> list[Path]:
 
 
 _INITIAL_PROMPT = (
-    "股癌 Gooaye，謝孟恭。美股、台股、投資、標的、主權基金、散戶、槓桿、對沖、做空、多頭、空頭、回測。"
-    "台積電 TSMC、輝達 NVIDIA、微軟 Microsoft、蘋果 Apple、特斯拉 Tesla、超微 AMD、博通 Broadcom。"
-    "聯發科、鴻海、廣達、緯創、世芯、創意。ETF、0050、0056、00878、00919、00929。"
-    "本益比、殖利率、營收、毛利率、EPS、財報、法說會、資本支出、CoWoS、半導體、載板。"
-    "被動元件、MLCC、電容、電感、產能、庫存、光通訊。"
-    "加權指數、美債、殖利率倒掛、聯準會 Fed、降息、升息、通膨、籌碼面、技術面。"
-    "融資、融券、回檔、修正、動能、倉位、太弱留強、波段操作。"
+    "代代財女，女性理財投資 Podcast。個人理財、資產配置、ETF、股票、基金、房地產。"
+    "台積電 TSMC、輝達 NVIDIA、高股息 ETF、0050、00878、00919、00929。"
+    "存股、被動收入、退休規劃、定期定額、長期投資。"
+    "本益比、殖利率、股息、配息、淨值、資產負債表。"
+    "美股、台股、大盤、ETF、指數型基金、共同基金。"
+    "財務自由、FIRE、緊急備用金、保險、稅務規劃。"
 )
 
 _FINANCIAL_KEYWORDS = [
-    # 公司與產業
-    "股", "台積", "TSMC", "輝達", "NVIDIA", "AMD", "Broadcom", "博通",
-    "聯發科", "鴻海", "廣達", "緯創", "世芯", "創意",
-    "半導體", "晶片", "CoWoS", "載板", "被動元件", "MLCC", "電容", "電感",
-    "光通訊", "AI", "伺服器", "雲端",
-    # 市場與指數
-    "美股", "台股", "大盤", "加權", "指數", "OTC", "櫃買",
-    "ETF", "0050", "00878", "高股息",
-    # 基本面
-    "營收", "毛利", "EPS", "財報", "法說會", "本益比", "殖利率",
-    "資本支出", "產能", "庫存", "漲價", "毛利率", "ROE",
-    # 總經
-    "Fed", "聯準會", "降息", "升息", "通膨", "美債", "殖利率倒掛",
-    "主權基金", "外資", "投信",
-    # 交易策略
-    "多頭", "空頭", "做空", "對沖", "槓桿", "融資", "融券",
-    "回檔", "修正", "動能", "倉位", "波段", "加碼", "減碼",
-    "籌碼", "技術面", "基本面", "太弱留強",
+    "股", "ETF", "0050", "00878", "高股息", "存股", "配息", "殖利率",
+    "台積", "TSMC", "NVIDIA", "輝達",
+    "美股", "台股", "大盤", "指數", "基金",
+    "本益比", "EPS", "財報", "法說會", "毛利率",
+    "Fed", "聯準會", "降息", "升息", "通膨",
+    "定期定額", "長期投資", "被動收入", "財務自由",
+    "資產", "負債", "現金流", "報酬率", "風險",
+    "房地產", "租金", "通膨", "保險",
 ]
 
 
 def _transcribe_episode(model, mp3_path: Path) -> str:
-    chunk_dir = Path(tempfile.mkdtemp(prefix="gooaye_"))
+    chunk_dir = Path(tempfile.mkdtemp(prefix="richwomen_"))
     try:
         print(f"    Splitting into {CHUNK_SECONDS}s chunks...", flush=True)
         chunks = _split_mp3(mp3_path, chunk_dir)
@@ -125,12 +113,12 @@ def _transcribe_episode(model, mp3_path: Path) -> str:
 
 
 def main():
-    print(f"[{datetime.now(UTC8)}] Starting Gooaye transcription...")
+    print(f"[{datetime.now(UTC8)}] Starting 代代財女 transcription...")
 
-    gooaye_sid = get_podcast_spreadsheet_id('Gooaye')
+    sid = get_podcast_spreadsheet_id('RichWomen')
     sheets = get_podcast_sheets_service().spreadsheets().values()
 
-    result = sheets.get(spreadsheetId=gooaye_sid, range='Sheet1!A2:J').execute()
+    result = sheets.get(spreadsheetId=sid, range='Sheet1!A2:J').execute()
     rows = result.get('values', [])
     if not rows:
         print("No episodes in sheet")
@@ -177,7 +165,7 @@ def main():
 
         now = datetime.now(UTC8).strftime('%Y-%m-%d %H:%M:%S')
         sheets_update_with_retry(
-            sheets, gooaye_sid, f'Sheet1!I{sheet_row}:J{sheet_row}',
+            sheets, sid, f'Sheet1!I{sheet_row}:J{sheet_row}',
             [[now, rel_txt]],
         )
         transcribed += 1
@@ -187,23 +175,22 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ep', help='Episode number (e.g. 662) — looks up MP3 path from sheet')
+    parser.add_argument('--ep', help='Episode title fragment — looks up MP3 path from sheet')
     args = parser.parse_args()
 
     if args.ep:
-        gooaye_sid = get_podcast_spreadsheet_id('Gooaye')
+        sid = get_podcast_spreadsheet_id('RichWomen')
         sheets = get_podcast_sheets_service().spreadsheets().values()
-        rows = sheets.get(spreadsheetId=gooaye_sid, range='Sheet1!A2:J').execute().get('values', [])
+        rows = sheets.get(spreadsheetId=sid, range='Sheet1!A2:J').execute().get('values', [])
 
-        tag = f"EP{args.ep}"
         match = next(
             (row for row in rows
-             if len(row) > COL_TITLE and tag in row[COL_TITLE]
+             if len(row) > COL_TITLE and args.ep in row[COL_TITLE]
              and len(row) > COL_LOCAL_MP3 and row[COL_LOCAL_MP3].strip()),
             None,
         )
         if not match:
-            print(f"No sheet row found for {tag} with a LocalMP3 path")
+            print(f"No sheet row found for '{args.ep}' with a LocalMP3 path")
             sys.exit(1)
 
         mp3_path = REPO_ROOT / match[COL_LOCAL_MP3].strip()
@@ -212,7 +199,6 @@ if __name__ == '__main__':
             sys.exit(1)
 
         print(f"Found: {match[COL_TITLE]}")
-        print(f"MP3:   {mp3_path}")
         model = _load_whisper()
         transcript = _transcribe_episode(model, mp3_path)
         txt_path = mp3_path.with_suffix('.txt')
