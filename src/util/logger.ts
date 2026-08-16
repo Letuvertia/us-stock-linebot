@@ -11,11 +11,20 @@ function _getLogSheet(): GoogleAppsScript.Spreadsheet.Sheet {
 }
 
 function _log(level: string, functionName: string, message: string): void {
+  const formatted = `[${level}] ${functionName}: ${message}`;
+  if (level === 'ERROR') {
+    console.error(formatted);
+  } else if (level === 'WARN') {
+    console.warn(formatted);
+  } else {
+    console.log(formatted);
+  }
+
   try {
     const timestamp = Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
     _getLogSheet().appendRow([timestamp, level, functionName, message]);
-  } catch (_) {
-    console.log(`[${level}] ${functionName}: ${message}`);
+  } catch (sheetErr) {
+    console.error(`[WARN] _log: Failed to append to Sheets log tab: ${sheetErr}`);
   }
 }
 
