@@ -46,6 +46,15 @@ function _fetchUsdNtd(): number {
   return price > 0 ? price : 32.0;
 }
 
+function _normalizeTwTicker(ticker: string): string {
+  const trimmed = ticker.trim();
+  if (/^\d+$/.test(trimmed)) {
+    if (trimmed.length <= 2) return trimmed.padStart(4, '0');
+    if (trimmed.length === 3) return trimmed.padStart(5, '0');
+  }
+  return trimmed;
+}
+
 // ── Loan interest ────────────────────────────────────────────────────────────
 
 function _loanAccruedInterest(loanDate: string, principal: number, annualRate: number): number {
@@ -190,7 +199,8 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
 
     if (row.type === 'STOCK') {
       const isTw = row.exchange === 'TW' || row.exchange === 'TWO';
-      const yfTicker = isTw ? `${row.ticker}.${row.exchange}` : row.ticker;
+      const ticker = isTw ? _normalizeTwTicker(row.ticker) : row.ticker;
+      const yfTicker = isTw ? `${ticker}.${row.exchange}` : ticker;
       const { price, change, changePct } = retryWithBackoff(() => _yfPrice(yfTicker), 2, 1500);
 
       const localAsset = Math.round(row.shares * price * 100) / 100;
