@@ -63,6 +63,68 @@ function sendReplyMessage(replyToken: string, text: string): void {
   }
 }
 
+function sendReplyFlexMessage(replyToken: string, flexMessageOrContents: object, defaultAltText: string = 'CFA 練習題目'): void {
+  const messageObj = ('type' in flexMessageOrContents && (flexMessageOrContents as any).type === 'flex')
+    ? flexMessageOrContents
+    : {
+        type: 'flex',
+        altText: defaultAltText,
+        contents: flexMessageOrContents,
+      };
+
+  const resp = UrlFetchApp.fetch(LINE_REPLY_URL, {
+    method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
+    headers: _lineHeaders(),
+    payload: JSON.stringify({ replyToken, messages: [messageObj] }),
+    muteHttpExceptions: true,
+  });
+  if (resp.getResponseCode() !== 200) {
+    logError('sendReplyFlexMessage', `LINE API ${resp.getResponseCode()}: ${resp.getContentText().slice(0, 300)}`);
+  }
+}
+
+function sendReplyMessages(replyToken: string, messages: object[]): void {
+  const formatted = messages.map(m => {
+    if ('type' in m) return m;
+    return {
+      type: 'flex',
+      altText: 'CFA 練習題目',
+      contents: m,
+    };
+  });
+
+  const resp = UrlFetchApp.fetch(LINE_REPLY_URL, {
+    method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
+    headers: _lineHeaders(),
+    payload: JSON.stringify({ replyToken, messages: formatted.slice(0, 5) }),
+    muteHttpExceptions: true,
+  });
+  if (resp.getResponseCode() !== 200) {
+    logError('sendReplyMessages', `LINE API ${resp.getResponseCode()}: ${resp.getContentText().slice(0, 300)}`);
+  }
+}
+
+function sendPushFlexMessage(flexContents: object, altText: string = 'CFA 練習題目'): void {
+  const groupId = getScriptProperty(PROP_KEYS.LINE_GROUP_ID);
+  const messages = [
+    {
+      type: 'flex',
+      altText: altText,
+      contents: flexContents,
+    },
+  ];
+
+  const resp = UrlFetchApp.fetch(LINE_PUSH_URL, {
+    method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
+    headers: _lineHeaders(),
+    payload: JSON.stringify({ to: groupId, messages }),
+    muteHttpExceptions: true,
+  });
+  if (resp.getResponseCode() !== 200) {
+    logError('sendPushFlexMessage', `LINE API ${resp.getResponseCode()}: ${resp.getContentText().slice(0, 300)}`);
+  }
+}
+
 function sendPushMessage(text: string): void {
   const groupId = getScriptProperty(PROP_KEYS.LINE_GROUP_ID);
   const chunks = splitLongMessage(text);
