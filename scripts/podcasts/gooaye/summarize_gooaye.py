@@ -9,7 +9,6 @@ import argparse
 import json
 import os
 import sys
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'market_d
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from data_common import UTC8
-from config import OLLAMA_MODEL
+from config import OLLAMA_BASE_URL, OLLAMA_MODEL
 from podcast_common import (
     get_podcast_sheets_service,
     get_podcast_spreadsheet_id,
@@ -60,28 +59,6 @@ PROMPT_TEMPLATE = """\
 """
 
 
-def _wsl_host() -> str:
-    try:
-        out = subprocess.check_output(['ip', 'route', 'show', 'default'], text=True)
-        for part in out.split():
-            if part not in ('default', 'via', 'dev', 'proto', 'kernel', 'src'):
-                return part
-    except Exception:
-        pass
-    return 'host.docker.internal'
-
-
-def _ollama_base_url() -> str:
-    for host in ('localhost', _wsl_host()):
-        url = f'http://{host}:11434'
-        try:
-            requests.get(f'{url}/api/tags', timeout=2)
-            return url
-        except Exception:
-            continue
-    return 'http://localhost:11434'
-
-
 def _format_summary(data: dict) -> str:
     """Convert parsed JSON into a compact bullet-list string."""
     lines = []
@@ -114,12 +91,11 @@ def _format_summary(data: dict) -> str:
 
 def _summarize(transcript: str) -> str | None:
     """Call Ollama with JSON format, return formatted bullet-list string or None."""
-    base_url = _ollama_base_url()
     prompt = PROMPT_TEMPLATE.format(transcript=transcript)
     raw = ''
     try:
         resp = requests.post(
-            f'{base_url}/api/generate',
+            f'{OLLAMA_BASE_URL}/api/generate',
             json={
                 'model': OLLAMA_MODEL,
                 'prompt': prompt,
