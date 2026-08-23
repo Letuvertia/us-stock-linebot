@@ -22,28 +22,43 @@ interface HoldingRow {
 function _yfPrice(symbol: string): { price: number; change: number; changePct: number } {
   // range=2d: chartPreviousClose = previous trading day's close (range=5d gives wrong value)
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=2d`;
-  try {
-    const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    if (resp.getResponseCode() !== 200) return { price: 0, change: 0, changePct: 0 };
-    const data = JSON.parse(resp.getContentText());
-    const result = data?.chart?.result?.[0];
-    if (!result) return { price: 0, change: 0, changePct: 0 };
-    const meta = result.meta;
-    const price: number = meta.regularMarketPrice ?? 0;
-    // Prefer the actual previous candle close over meta field
-    const closes: number[] = (result.indicators?.quote?.[0]?.close ?? []).filter((c: number | null) => c != null);
-    const prev: number = closes.length >= 2 ? closes[closes.length - 2] : (meta.chartPreviousClose ?? 0);
-    const change = Math.round((price - prev) * 100) / 100;
-    const changePct = prev > 0 ? (price - prev) / prev * 100 : 0;
-    return { price, change, changePct };
-  } catch {
-    return { price: 0, change: 0, changePct: 0 };
+  const resp = UrlFetchApp.fetch(url, {
+    muteHttpExceptions: true,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+    },
+  });
+  const code = resp.getResponseCode();
+  if (code !== 200) {
+    throw new Error(`YF fetch failed for ${symbol} with HTTP ${code}: ${resp.getContentText().slice(0, 100)}`);
   }
+  const data = JSON.parse(resp.getContentText());
+  const result = data?.chart?.result?.[0];
+  if (!result) {
+    throw new Error(`No result in YF payload for ${symbol}`);
+  }
+  const meta = result.meta;
+  const price: number = meta.regularMarketPrice ?? 0;
+  if (price <= 0) {
+    throw new Error(`Invalid market price ${price} for ${symbol}`);
+  }
+  // Prefer the actual previous candle close over meta field
+  const closes: number[] = (result.indicators?.quote?.[0]?.close ?? []).filter((c: number | null) => c != null);
+  const prev: number = closes.length >= 2 ? closes[closes.length - 2] : (meta.chartPreviousClose ?? 0);
+  const change = Math.round((price - prev) * 100) / 100;
+  const changePct = prev > 0 ? (price - prev) / prev * 100 : 0;
+  return { price, change, changePct };
 }
 
 function _fetchUsdNtd(): number {
-  const { price } = _yfPrice('USDTWD=X');
-  return price > 0 ? price : 32.0;
+  try {
+    const { price } = retryWithBackoff(() => _yfPrice('USDTWD=X'), 3, 1000);
+    return price > 0 ? price : 32.0;
+  } catch (err) {
+    logWarn('_fetchUsdNtd', `Failed to fetch USD/NTD rate: ${err instanceof Error ? err.message : String(err)}`);
+    return 32.0;
+  }
 }
 
 function _normalizeTwTicker(ticker: string): string {
@@ -169,8 +184,8 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
   let loanRow: HoldingRow | null = null;
   let loanVal = 0;
 
-  const twLines: string[] = [];
-  const usLines: string[] = [];
+  const twBlocks: string[][] = [];
+  const usBlocks: string[][] = [];
 
   for (const row of rows) {
     const r = row.sheetRow;
@@ -201,39 +216,75 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
       const isTw = row.exchange === 'TW' || row.exchange === 'TWO';
       const ticker = isTw ? _normalizeTwTicker(row.ticker) : row.ticker;
       const yfTicker = isTw ? `${ticker}.${row.exchange}` : ticker;
-      const { price, change, changePct } = retryWithBackoff(() => _yfPrice(yfTicker), 2, 1500);
 
-      const localAsset = Math.round(row.shares * price * 100) / 100;
-      const ntdAsset = isTw ? localAsset : Math.round(localAsset * usdNtd * 100) / 100;
-      const roi = row.avgCost > 0 ? Math.round((price / row.avgCost - 1) * 1000000) / 1000000 : 0;
-      stockNtd += ntdAsset;
-      updates.push({ range: `H${r}:K${r}`, values: [[price, roi, localAsset, ntdAsset]] });
+      let price = 0;
+      let change = 0;
+      let changePct = 0;
+      let fetchSuccess = false;
 
-      const absChange = Math.abs(change);
-      const absChangePct = Math.abs(changePct);
-      const changeEmoji = change >= 0 ? '📈' : '📉';
-      const changeSign = change >= 0 ? '+' : '-';
+      try {
+        const res = retryWithBackoff(() => _yfPrice(yfTicker), 3, 1000);
+        price = res.price;
+        change = res.change;
+        changePct = res.changePct;
+        fetchSuccess = true;
+      } catch (err) {
+        logError(fnName, `Failed to fetch price for ${yfTicker}: ${err instanceof Error ? err.message : String(err)}`);
+      }
 
-      if (isTw) {
-        const pl = Math.round(localAsset - row.totalCost);
-        const plPct = row.totalCost > 0 ? pl / row.totalCost * 100 : 0;
-        const plSign = pl >= 0 ? '+' : '-';
-        twLines.push(
-          `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
-          `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 0)}`,
-          `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 0)}`,
-          `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 0)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
-        );
+      if (fetchSuccess && price > 0) {
+        const localAsset = Math.round(row.shares * price * 100) / 100;
+        const ntdAsset = isTw ? localAsset : Math.round(localAsset * usdNtd * 100) / 100;
+        const roi = row.avgCost > 0 ? Math.round((price / row.avgCost - 1) * 1000000) / 1000000 : 0;
+        stockNtd += ntdAsset;
+
+        updates.push({ range: `H${r}:K${r}`, values: [[price, roi, localAsset, ntdAsset]] });
+
+        const absChange = Math.abs(change);
+        const absChangePct = Math.abs(changePct);
+        const changeEmoji = change >= 0 ? '📈' : '📉';
+        const changeSign = change >= 0 ? '+' : '-';
+
+        if (isTw) {
+          const pl = Math.round(localAsset - row.totalCost);
+          const plPct = row.totalCost > 0 ? pl / row.totalCost * 100 : 0;
+          const plSign = pl >= 0 ? '+' : '-';
+          twBlocks.push([
+            `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
+            `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 0)}`,
+            `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 0)}`,
+            `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 0)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
+          ]);
+        } else {
+          const pl = Math.round((localAsset - row.totalCost) * 100) / 100;
+          const plPct = row.totalCost > 0 ? pl / row.totalCost * 100 : 0;
+          const plSign = pl >= 0 ? '+' : '-';
+          usBlocks.push([
+            `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
+            `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 2)}`,
+            `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 2)}`,
+            `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 2)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
+          ]);
+        }
       } else {
-        const pl = Math.round((localAsset - row.totalCost) * 100) / 100;
-        const plPct = row.totalCost > 0 ? pl / row.totalCost * 100 : 0;
-        const plSign = pl >= 0 ? '+' : '-';
-        usLines.push(
-          `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
-          `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 2)}`,
-          `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 2)}`,
-          `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 2)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
-        );
+        const header = change !== 0
+          ? `▸ ${row.name} | ${change >= 0 ? '📈+' : '📉-'}${_fmtNum(Math.abs(change), 2)} (${Math.abs(changePct).toFixed(2)}%)`
+          : `▸ ${row.name}`;
+        if (isTw) {
+          twBlocks.push([
+            header,
+            `   市價 N/A`,
+            `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 0)}`,
+            `   總損益 N/A`,
+          ]);
+        } else {
+          usBlocks.push([
+            header,
+            `   市價 N/A`,
+            `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 2)}`,
+            `   總損益 N/A`,
+          ]);
+        }
       }
     }
   }
@@ -255,23 +306,14 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
     DIVIDER,
   ];
 
-  const _interleave = (stockLines: string[]) => {
-    const out: string[] = [];
-    for (let i = 0; i < stockLines.length; i += 4) {
-      if (i > 0) out.push('');
-      out.push(...stockLines.slice(i, i + 4));
-    }
-    return out;
-  };
-
-  if (twLines.length > 0) {
+  if (twBlocks.length > 0) {
     lines.push('【台股】', '');
-    lines.push(..._interleave(twLines));
+    lines.push(twBlocks.map(b => b.join('\n')).join('\n\n'));
   }
-  if (twLines.length > 0 && usLines.length > 0) lines.push('');
-  if (usLines.length > 0) {
+  if (twBlocks.length > 0 && usBlocks.length > 0) lines.push('');
+  if (usBlocks.length > 0) {
     lines.push('【美股】', '');
-    lines.push(..._interleave(usLines));
+    lines.push(usBlocks.map(b => b.join('\n')).join('\n\n'));
   }
   lines.push(DIVIDER);
 
