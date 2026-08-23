@@ -8,7 +8,6 @@ import sys
 import os
 import time
 import random
-import subprocess
 from datetime import datetime, timedelta
 
 import requests
@@ -16,7 +15,7 @@ import requests
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'market_data'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import data_common
-from config import OLLAMA_MODEL, LOOKBACK_DAYS
+from config import OLLAMA_BASE_URL, OLLAMA_MODEL, LOOKBACK_DAYS
 
 SUMMARY_COL_HEADER = 'Summary'
 MAX_CONTENT_CHARS = 3000
@@ -61,29 +60,6 @@ PROMPT_TEMPLATE = """你是一位專業金融分析師。請閱讀以下新聞�
 {content}"""
 
 
-def _wsl_host() -> str:
-    try:
-        out = subprocess.check_output(['ip', 'route', 'show', 'default'], text=True)
-        for part in out.split():
-            if part not in ('default', 'via', 'dev', 'proto', 'kernel', 'src'):
-                return part
-    except Exception:
-        pass
-    return 'host.docker.internal'
-
-
-def _ollama_base_url() -> str:
-    for host in ('localhost', _wsl_host()):
-        url = f'http://{host}:11434'
-        try:
-            requests.get(f'{url}/api/tags', timeout=2)
-            return url
-        except Exception:
-            continue
-    return 'http://localhost:11434'
-
-
-
 def _parse_result(data: dict) -> tuple[str, list[str]]:
     """Return (summary_text, [tickers]) from parsed LLM JSON.
     Prices are omitted — GAS injects live prices at report time."""
@@ -112,10 +88,9 @@ def _summarize(title: str, content: str) -> tuple[str, list[str]] | None:
     """Return (summary_text, tickers) or None on failure."""
     full_text = f'{title}\n\n{content}' if title else content
     prompt = PROMPT_TEMPLATE.format(content=full_text[:MAX_CONTENT_CHARS])
-    base_url = _ollama_base_url()
     raw = ''
     try:
-        resp = requests.post(f'{base_url}/api/generate', json={
+        resp = requests.post(f'{OLLAMA_BASE_URL}/api/generate', json={
             'model': OLLAMA_MODEL,
             'prompt': prompt,
             'stream': False,

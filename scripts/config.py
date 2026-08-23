@@ -63,7 +63,8 @@ def __getattr__(name):
 
 # === Tuning constants ===
 
-# Summarizer (scripts/market_news/summarize_cnbc.py)
+# Summarizer (scripts/market_news/summarize_cnbc.py, scripts/podcasts/)
+OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
 OLLAMA_MODEL = 'qwen3.5:4b'
 LOOKBACK_DAYS = 7
 
