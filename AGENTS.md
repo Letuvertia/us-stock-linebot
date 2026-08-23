@@ -22,6 +22,12 @@ See [README.md](file:///home/letuvertia/us-stock-linebot/README.md) for full arc
 ### Github Python Environment (`scripts/`)
 All secrets and credentials required by Python collector scripts (Google service accounts, spreadsheet IDs, and API keys) are already pre-configured both in GitHub Actions Secrets for scheduled workflows and locally in `.secrets/` and `.env` on this development machine. You can run collectors directly without extra virtual environment or credential setup.
 
+### Local Ollama / LLM (WSL2 to Windows Host)
+News and podcast summarization scripts run inside WSL2 and connect to Ollama on the Windows host at port `11434` via default gateway routing (`ip route show default`).
+
+### Local Proxy API (`http://localhost:8317`)
+Local OpenAI-compatible API endpoint (`http://localhost:8317/v1`) authenticated via `CLI_PROXY_API_KEY` in `.env`.
+
 ### GAS TypeScript Environment (`src/`)
 CI/CD (`.github/workflows/cicd.yaml`) runs automatically on push to all branches (builds TypeScript, runs `clasp push`, updates the deployment via `clasp deploy --deploymentId $GAS_DEPLOYMENT_ID`, and reconciles triggers). There is no need for local clasp testing; pushing to any feature branch automatically deploys a preview build (`<latest-tag>-<short-sha>`) to the existing deployment URL so you can test changes directly against the webhook endpoint.
 
