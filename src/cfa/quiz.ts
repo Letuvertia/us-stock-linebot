@@ -13,8 +13,10 @@ interface CfaQuestionRecord {
   answer: string;         // "A" | "B" | "C" | ""
   nuoAnswered: number;
   nuoCorrect: number;
+  nuoLearned: number;
   niuAnswered: number;
   niuCorrect: number;
+  niuLearned: number;
   questionJson: string;   // Full Flex message JSON {"type":"flex", ...}
   solutionJson: string;   // Full Flex message JSON {"type":"flex", ...}
 }
@@ -122,13 +124,13 @@ function isModuleLearnedByUser(vol: number, mod: number, userId?: string): boole
 }
 
 /**
- * Loads all CFA questions from the specified volume tab.
+ * Loads all CFA questions from the specified volume tab (13 columns).
  */
 function loadCfaQuestionsFromSheet(tabName: string = DEFAULT_CFA_TAB): CfaQuestionRecord[] {
   const sheet = _getCfaSpreadsheet().getSheetByName(tabName);
   if (!sheet || sheet.getLastRow() <= 1) return [];
 
-  const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 11).getValues();
+  const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 13).getValues();
   const records: CfaQuestionRecord[] = [];
 
   for (let i = 0; i < rawRows.length; i++) {
@@ -145,10 +147,12 @@ function loadCfaQuestionsFromSheet(tabName: string = DEFAULT_CFA_TAB): CfaQuesti
       answer: String(row[4] || '').trim().toUpperCase(),
       nuoAnswered: Number(row[5]) || 0,
       nuoCorrect: Number(row[6]) || 0,
-      niuAnswered: Number(row[7]) || 0,
-      niuCorrect: Number(row[8]) || 0,
-      questionJson: String(row[9] || '').trim(),
-      solutionJson: String(row[10] || '').trim(),
+      nuoLearned: Number(row[7]) || 0,
+      niuAnswered: Number(row[8]) || 0,
+      niuCorrect: Number(row[9]) || 0,
+      niuLearned: Number(row[10]) || 0,
+      questionJson: String(row[11] || '').trim(),
+      solutionJson: String(row[12] || '').trim(),
     });
   }
 
@@ -156,11 +160,44 @@ function loadCfaQuestionsFromSheet(tabName: string = DEFAULT_CFA_TAB): CfaQuesti
 }
 
 /**
+ * Records an attempt (answered + 1, and correct + 1 if isCorrect) to Google Sheets.
+ */
+function recordCfaQuestionAttempt(
+  record: CfaQuestionRecord,
+  user: CfaUser,
+  isCorrect: boolean,
+  tabName: string = DEFAULT_CFA_TAB
+): void {
+  try {
+    const sheet = _getCfaSpreadsheet().getSheetByName(tabName);
+    if (!sheet) return;
+
+    // Nuo: Col 6 (Answered), Col 7 (Correct)
+    // Niu: Col 9 (Answered), Col 10 (Correct)
+    const ansCol = user === 'Niu' ? 9 : 6;
+    const corCol = user === 'Niu' ? 10 : 7;
+
+    const currentAns = user === 'Niu' ? record.niuAnswered : record.nuoAnswered;
+    const currentCor = user === 'Niu' ? record.niuCorrect : record.nuoCorrect;
+
+    const newAns = currentAns + 1;
+    const newCor = isCorrect ? currentCor + 1 : currentCor;
+
+    sheet.getRange(record.rowIndex, ansCol).setValue(newAns);
+    if (isCorrect) {
+      sheet.getRange(record.rowIndex, corCol).setValue(newCor);
+    }
+  } catch (err) {
+    logError('recordCfaQuestionAttempt', `Failed to record attempt: ${err}`);
+  }
+}
+
+/**
  * Selects the next CFA question based on learning progress:
  * - If vol and mod are specified (e.g. V1 M1), only chooses from that module.
  * - Otherwise, chooses from all modules marked as learned in UserLearningProgress.
  * - If user has no learned modules yet and no module specified, returns null.
- * - Prioritizes questions with 0 answers, then lowest accuracy ratio.
+ * - Prioritizes questions with 0 learned count, then 0 answered, then lowest accuracy ratio.
  */
 function fetchNextCfaQuestion(
   userId?: string,
@@ -189,27 +226,50 @@ function fetchNextCfaQuestion(
     return null;
   }
 
-  // 1. Check for un-answered questions
-  const unAnswered = candidateRecords.filter(r => {
-    const ansCount = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
-    return ansCount === 0;
+  // 1. Check for un-learned questions (learnedCount === 0)
+  const unLearned = candidateRecords.filter(r => {
+    const lrnCount = user === 'Niu' ? r.niuLearned : r.nuoLearned;
+    return lrnCount === 0;
   });
 
   let selected: CfaQuestionRecord;
-  if (unAnswered.length > 0) {
-    selected = unAnswered[0];
+  if (unLearned.length > 0) {
+    const unAnswered = unLearned.filter(r => {
+      const ansCount = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
+      return ansCount === 0;
+    });
+    if (unAnswered.length > 0) {
+      selected = unAnswered[0];
+    } else {
+      unLearned.sort((a, b) => {
+        const aAns = user === 'Niu' ? a.niuAnswered : a.nuoAnswered;
+        const aCor = user === 'Niu' ? a.niuCorrect : a.nuoCorrect;
+        const bAns = user === 'Niu' ? b.niuAnswered : b.nuoAnswered;
+        const bCor = user === 'Niu' ? b.niuCorrect : b.nuoCorrect;
+
+        const aRatio = aAns > 0 ? aCor / aAns : 0;
+        const bRatio = bAns > 0 ? bCor / bAns : 0;
+
+        if (aRatio !== bRatio) return aRatio - bRatio;
+        return aAns - bAns;
+      });
+      selected = unLearned[0];
+    }
   } else {
-    // 2. Sort by accuracy ratio ascending (lowest correct ratio first)
+    // 2. All questions are learned: sort by accuracy ratio ascending, then least learned
     const sorted = [...candidateRecords].sort((a, b) => {
       const aAns = user === 'Niu' ? a.niuAnswered : a.nuoAnswered;
       const aCor = user === 'Niu' ? a.niuCorrect : a.nuoCorrect;
+      const aLrn = user === 'Niu' ? a.niuLearned : a.nuoLearned;
       const bAns = user === 'Niu' ? b.niuAnswered : b.nuoAnswered;
       const bCor = user === 'Niu' ? b.niuCorrect : b.nuoCorrect;
+      const bLrn = user === 'Niu' ? b.niuLearned : b.nuoLearned;
 
       const aRatio = aAns > 0 ? aCor / aAns : 0;
       const bRatio = bAns > 0 ? bCor / bAns : 0;
 
       if (aRatio !== bRatio) return aRatio - bRatio;
+      if (aLrn !== bLrn) return aLrn - bLrn;
       return aAns - bAns;
     });
     selected = sorted[0];
@@ -248,8 +308,8 @@ function findCfaQuestionByRef(
 }
 
 /**
- * Evaluates user answer against correct answer in the sheet and returns the solution card
- * with an evaluation banner inserted at the top.
+ * Evaluates user answer against correct answer in the sheet, records attempt stats in sheet,
+ * and returns the solution card with an evaluation banner inserted at the top.
  */
 function handleCfaAnswerSubmission(
   vol: number,
@@ -257,6 +317,7 @@ function handleCfaAnswerSubmission(
   typeCode: string,
   num: number,
   chosenOption: string,
+  userId?: string,
   tabName: string = DEFAULT_CFA_TAB
 ): { isCorrect: boolean; flexMessage: object } | null {
   const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
@@ -264,6 +325,10 @@ function handleCfaAnswerSubmission(
 
   const chosen = chosenOption.trim().toUpperCase();
   const isCorrect = record.answer ? chosen === record.answer : false;
+  const user = resolveCfaUser(userId);
+
+  // Update Answered (+1) and Correct (+1 if correct) in Sheet
+  recordCfaQuestionAttempt(record, user, isCorrect, tabName);
 
   const bannerText = isCorrect
     ? `🎉 答對了！✅ 正確答案是 ${record.answer}`
@@ -304,17 +369,23 @@ function handleCfaAnswerSubmission(
 }
 
 /**
- * Retrieves the solution card for open-ended or directly requested explanations.
+ * Retrieves the solution card for open-ended or directly requested explanations,
+ * and records attempt stats (answered +1, correct +1) in Google Sheets.
  */
 function fetchCfaSolutionByRef(
   vol: number,
   mod: number,
   typeCode: string,
   num: number,
+  userId?: string,
   tabName: string = DEFAULT_CFA_TAB
 ): object | null {
   const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
   if (!record || !record.solutionJson) return null;
+
+  const user = resolveCfaUser(userId);
+  // For explanation requests (解析): update answered (+1) and correct (+1)
+  recordCfaQuestionAttempt(record, user, true, tabName);
 
   try {
     return JSON.parse(record.solutionJson);
@@ -336,7 +407,8 @@ const CFA_FEEDBACK_HEADERS = [
 ];
 
 /**
- * Builds the cumulative progress text lines for learned modules (e.g. "V1 / LM1 - Rates and Returns: 2/28").
+ * Builds the cumulative progress text lines for learned modules (e.g. "🚀 V1 / LM1 - Rates and Returns: 24/28").
+ * Uses rocket emoji at the front for in-progress modules, and checkmark at the front for completed modules.
  */
 function _buildCumulativeProgressLines(user: CfaUser): string[] {
   const allLearningModules = loadUserLearningModules();
@@ -351,17 +423,17 @@ function _buildCumulativeProgressLines(user: CfaUser): string[] {
 
     if (totalCount === 0) continue;
 
-    const correctCount = modQuestions.filter(q => {
-      const cor = user === 'Niu' ? q.niuCorrect : q.nuoCorrect;
-      return cor > 0;
+    const learnedCount = modQuestions.filter(q => {
+      const lrn = user === 'Niu' ? q.niuLearned : q.nuoLearned;
+      return lrn > 0;
     }).length;
 
-    const isAllCorrect = totalCount > 0 && correctCount >= totalCount;
+    const isAllLearned = totalCount > 0 && learnedCount >= totalCount;
     const volNum = parseInt(lm.volume.replace(/\D/g, ''), 10) || 1;
     const modNum = parseInt(lm.module.replace(/\D/g, ''), 10) || 1;
 
-    const checkEmoji = isAllCorrect ? ' ✅' : '';
-    moduleLines.push(`V${volNum} / LM${modNum} - ${lm.moduleName}: ${correctCount}/${totalCount}${checkEmoji}`);
+    const prefix = isAllLearned ? '✅ ' : '🚀 ';
+    moduleLines.push(`${prefix}V${volNum} / LM${modNum} - ${lm.moduleName}: ${learnedCount}/${totalCount}`);
   }
 
   if (moduleLines.length === 0) {
@@ -372,7 +444,7 @@ function _buildCumulativeProgressLines(user: CfaUser): string[] {
 }
 
 /**
- * Checks if all questions in the specified module have been answered correctly by the user.
+ * Checks if all questions in the specified module have been learned by the user (learned > 0).
  */
 function checkIsModuleCompleted(
   user: CfaUser,
@@ -386,17 +458,18 @@ function checkIsModuleCompleted(
   const totalCount = modQuestions.length;
   if (totalCount === 0) return false;
 
-  const correctCount = modQuestions.filter(q => {
-    const cor = user === 'Niu' ? q.niuCorrect : q.nuoCorrect;
-    return cor > 0;
+  const learnedCount = modQuestions.filter(q => {
+    const lrn = user === 'Niu' ? q.niuLearned : q.nuoLearned;
+    return lrn > 0;
   }).length;
 
-  return correctCount >= totalCount;
+  return learnedCount >= totalCount;
 }
 
 /**
  * Updates individual user learning status in Google Sheets when user clicks
  * "我看懂啦，下一題" (isKnown=true) or "我沒看懂，算了下一題" (isKnown=false).
+ * Updates only the Learned column (if isKnown=true).
  */
 function updateCfaLearningFeedback(
   vol: number,
@@ -423,22 +496,18 @@ function updateCfaLearningFeedback(
     return { success: false, user, record, message: `找不到試算表分頁 ${tabName}` };
   }
 
-  // Nuo: Col 6 (Answered), Col 7 (Correct)
-  // Niu: Col 8 (Answered), Col 9 (Correct)
-  const ansCol = user === 'Niu' ? 8 : 6;
-  const corCol = user === 'Niu' ? 9 : 7;
+  // Nuo: Col 8 (Learned)
+  // Niu: Col 11 (Learned)
+  const lrnCol = user === 'Niu' ? 11 : 8;
+  const currentLrn = user === 'Niu' ? record.niuLearned : record.nuoLearned;
 
-  const currentAns = user === 'Niu' ? record.niuAnswered : record.nuoAnswered;
-  const currentCor = user === 'Niu' ? record.niuCorrect : record.nuoCorrect;
-
-  const newAns = currentAns + 1;
-  const newCor = isKnown ? currentCor + 1 : currentCor;
-
-  sheet.getRange(record.rowIndex, ansCol).setValue(newAns);
-  sheet.getRange(record.rowIndex, corCol).setValue(newCor);
+  if (isKnown) {
+    const newLrn = currentLrn + 1;
+    sheet.getRange(record.rowIndex, lrnCol).setValue(newLrn);
+  }
 
   const typeDisplay = record.type === 'Example' ? 'Example' : 'Problem';
-  const statusDisplay = isKnown ? '✅ 我看懂了（正確次數 +1）' : '📖 還沒看懂（保留複習）';
+  const statusDisplay = isKnown ? '✅ 我看懂了' : '📖 還沒看懂（保留複習）';
   const header = CFA_FEEDBACK_HEADERS[Math.floor(Math.random() * CFA_FEEDBACK_HEADERS.length)];
   const progressLines = _buildCumulativeProgressLines(user);
 
@@ -447,8 +516,8 @@ function updateCfaLearningFeedback(
     `──────────────\n` +
     `題目：${record.moduleName} - ${typeDisplay} ${record.number}\n` +
     `狀態：${statusDisplay}\n` +
-    `累積練習題目：\n  ` +
-    progressLines.join('\n  ');
+    `累積練習題目（已看懂）：\n` +
+    progressLines.join('\n');
 
   return { success: true, user, record, message };
 }
