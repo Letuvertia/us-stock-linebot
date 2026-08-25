@@ -70,7 +70,7 @@ function _executeSingleCommand(
   }
 
   // 1. CFA Learning Status Feedback:
-  // A. Question feedback: "皮皮 CFA 學習狀態回報 V1 M1 Ex1 我會 / 我不會"
+  // A. Question feedback: "皮皮 CFA 學習狀態回報 V1 M1 Ex1 我會 / 我不會" (optionally ending with 模式)
   const qFeedbackMatch = /^CFA\s*學習狀態回報\s*V?(\d+)\s*M?(\d+)\s*(Ex|Pr|Example|Problem)\s*(\d+)\s*(我會|我不會)/i.exec(text);
   if (qFeedbackMatch) {
     const vol = parseInt(qFeedbackMatch[1], 10);
@@ -83,19 +83,37 @@ function _executeSingleCommand(
     const typeCode = qFeedbackMatch[3];
     const num = parseInt(qFeedbackMatch[4], 10);
     const isKnown = qFeedbackMatch[5] === '我會';
-    logInfo(fnName, `CFA question feedback match: V${vol} M${mod} ${typeCode}${num} (${qFeedbackMatch[5]})`);
+    const isDrill = /刷題/i.test(text);
+    const isReview = /複習/i.test(text);
+    const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
+
+    logInfo(fnName, `CFA question feedback match: V${vol} M${mod} ${typeCode}${num} (${qFeedbackMatch[5]}), mode=${mode}`);
     const res = updateCfaLearningFeedback(vol, mod, typeCode, num, isKnown, userId);
     outMessages.push({ type: 'text', text: res.message });
 
-    // If all questions in this module are completed correctly by user, celebrate!
-    if (checkIsModuleCompleted(res.user, vol, mod)) {
-      const completedCard = _buildCfaModuleCompletedFlexCard(res.user, vol, mod, res.record.moduleName);
-      outMessages.push(completedCard);
-    } else {
-      // Automatically fetch next question from the SAME module!
-      const nextQ = fetchNextCfaQuestion(userId, vol, mod);
+    if (mode === 'drill') {
+      // In drill mode, always fetch next question randomly across all answered questions in learned modules
+      const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, DEFAULT_CFA_TAB, 'drill');
       if (nextQ) {
         outMessages.push(nextQ.flexMessage);
+      }
+    } else if (mode === 'review') {
+      // In review mode, continuously fetch next question from the SAME module without celebration card
+      const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'review');
+      if (nextQ) {
+        outMessages.push(nextQ.flexMessage);
+      }
+    } else {
+      // In learn mode, if all questions in this module are completed by user, celebrate!
+      if (checkIsModuleCompleted(res.user, vol, mod)) {
+        const completedCard = _buildCfaModuleCompletedFlexCard(res.user, vol, mod, res.record.moduleName);
+        outMessages.push(completedCard);
+      } else {
+        // Automatically fetch next question from the SAME module in learn mode
+        const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'learn');
+        if (nextQ) {
+          outMessages.push(nextQ.flexMessage);
+        }
       }
     }
     return;
@@ -114,7 +132,7 @@ function _executeSingleCommand(
     return;
   }
 
-  // 2. CFA Explanation Request: "皮皮 CFA 解析 V1 M1 Ex1"
+  // 2. CFA Explanation Request: "皮皮 CFA 解析 V1 M1 Ex1" (optionally ending with 模式)
   const solutionMatch = /^CFA\s*解析\s*V?(\d+)\s*M?(\d+)\s*(Ex|Pr|Example|Problem)\s*(\d+)/i.exec(text);
   if (solutionMatch) {
     const vol = parseInt(solutionMatch[1], 10);
@@ -126,8 +144,11 @@ function _executeSingleCommand(
 
     const typeCode = solutionMatch[3];
     const num = parseInt(solutionMatch[4], 10);
-    logInfo(fnName, `CFA explanation match: V${vol} M${mod} ${typeCode}${num}`);
-    const solutionFlex = fetchCfaSolutionByRef(vol, mod, typeCode, num, userId);
+    const isDrill = /刷題/i.test(text);
+    const isReview = /複習/i.test(text);
+    const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
+    logInfo(fnName, `CFA explanation match: V${vol} M${mod} ${typeCode}${num}, mode=${mode}`);
+    const solutionFlex = fetchCfaSolutionByRef(vol, mod, typeCode, num, userId, mode);
     if (solutionFlex) {
       outMessages.push(solutionFlex);
     } else {
@@ -136,7 +157,7 @@ function _executeSingleCommand(
     return;
   }
 
-  // 3. CFA Answer Submission: "皮皮 CFA 回答 V1 M1 Ex1 A"
+  // 3. CFA Answer Submission: "皮皮 CFA 回答 V1 M1 Ex1 A" (optionally ending with 模式)
   const answerMatch = /^CFA\s*回答\s*V?(\d+)\s*M?(\d+)\s*(Ex|Pr|Example|Problem)\s*(\d+)\s*([A-Ca-c])/i.exec(text);
   if (answerMatch) {
     const vol = parseInt(answerMatch[1], 10);
@@ -149,8 +170,11 @@ function _executeSingleCommand(
     const typeCode = answerMatch[3];
     const num = parseInt(answerMatch[4], 10);
     const chosen = answerMatch[5].toUpperCase();
-    logInfo(fnName, `CFA answer match: V${vol} M${mod} ${typeCode}${num} -> ${chosen}`);
-    const res = handleCfaAnswerSubmission(vol, mod, typeCode, num, chosen, userId);
+    const isDrill = /刷題/i.test(text);
+    const isReview = /複習/i.test(text);
+    const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
+    logInfo(fnName, `CFA answer match: V${vol} M${mod} ${typeCode}${num} -> ${chosen}, mode=${mode}`);
+    const res = handleCfaAnswerSubmission(vol, mod, typeCode, num, chosen, userId, mode);
     if (res) {
       outMessages.push(res.flexMessage);
     } else {
@@ -159,7 +183,49 @@ function _executeSingleCommand(
     return;
   }
 
-  // 4. CFA Textbook Summary: "皮皮 CFA 課本摘要 V1 M1"
+  // 4. CFA Module Selectors: "皮皮 CFA 學習題目" / "皮皮 CFA 複習摘要" / "皮皮 CFA 複習題目"
+  if (/^CFA\s*(?:學習題目|學習某單元題目|繼續學習某單元題目|繼續學習單元題目)(?!\s*V?\d+)/i.test(text)) {
+    logInfo(fnName, 'CFA continue learn quiz selector request');
+    const selectorCard = buildCfaModuleSelectorFlexCard(userId, 'learn_quiz');
+    outMessages.push(selectorCard);
+    return;
+  }
+  if (/^CFA\s*(?:複習摘要|複習某單元摘要|複習摘要清單)/i.test(text)) {
+    logInfo(fnName, 'CFA review summary selector request');
+    const selectorCard = buildCfaModuleSelectorFlexCard(userId, 'summary');
+    outMessages.push(selectorCard);
+    return;
+  }
+  if (/^CFA\s*(?:複習題目|複習某單元題目|複習題目清單)(?!\s*V?\d+)/i.test(text)) {
+    logInfo(fnName, 'CFA review quiz selector request');
+    const selectorCard = buildCfaModuleSelectorFlexCard(userId, 'review_quiz');
+    outMessages.push(selectorCard);
+    return;
+  }
+
+  // 5. CFA Drill Mode Request: "皮皮 CFA 刷題模式" or "皮皮 CFA 刷題"
+  if (/^CFA\s*(?:刷題模式|刷題)/i.test(text)) {
+    logInfo(fnName, 'CFA drill mode request');
+    const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, DEFAULT_CFA_TAB, 'drill');
+    if (nextQ) {
+      outMessages.push(nextQ.flexMessage);
+    } else {
+      const user = resolveCfaUser(userId);
+      const learnedModules = getLearnedModuleCodes(user);
+      if (learnedModules.length === 0) {
+        const startCard = getCfaUserProgressReport(userId);
+        outMessages.push(startCard);
+      } else {
+        outMessages.push({
+          type: 'text',
+          text: '🐶 刷題模式會複習已練習過的題目！目前已學單元中尚未有練習紀錄，請先點選「複習單元題目」或從第一單元開始練習喔！'
+        });
+      }
+    }
+    return;
+  }
+
+  // 6. CFA Textbook Summary: "皮皮 CFA 課本摘要 V1 M1"
   const summaryMatch = /^CFA\s*(?:課本摘要|摘要|導讀)\s*V?(\d+)\s*M?(\d+)/i.exec(text);
   if (summaryMatch) {
     const vol = parseInt(summaryMatch[1], 10);
@@ -179,13 +245,16 @@ function _executeSingleCommand(
     return;
   }
 
-  // 5. CFA Question Request: "皮皮 CFA 題目" or "皮皮 CFA 題目 V1 M1"
-  const questionMatch = /^CFA\s*(?:題目|問題|考題|quiz)(?:\s*V?(\d+)\s*M?(\d+))?/i.exec(text);
+  // 7. CFA Question Request: "皮皮 CFA 學習題目 V1 M1", "皮皮 CFA 複習題目 V1 M1", or "皮皮 CFA 題目 V1 M1"
+  const questionMatch = /^CFA\s*(?:學習題目|複習題目|題目|問題|考題|quiz)(?:\s*V?(\d+)\s*M?(\d+))?/i.exec(text);
   if (questionMatch || (/cfa/i.test(text) && /(?:問題|題目|考題|quiz)/i.test(text))) {
     const vol = questionMatch && questionMatch[1] ? parseInt(questionMatch[1], 10) : undefined;
     const mod = questionMatch && questionMatch[2] ? parseInt(questionMatch[2], 10) : undefined;
-    logInfo(fnName, `CFA question request match: vol=${vol} mod=${mod}`);
-    const nextQ = fetchNextCfaQuestion(userId, vol, mod);
+    const isDrill = /刷題/i.test(text);
+    const isReview = /複習/i.test(text);
+    const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
+    logInfo(fnName, `CFA question request match: vol=${vol} mod=${mod}, mode=${mode}`);
+    const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, mode);
     if (nextQ) {
       outMessages.push(nextQ.flexMessage);
     } else {
@@ -194,6 +263,18 @@ function _executeSingleCommand(
       if (learnedModules.length === 0 && mod === undefined) {
         const startCard = getCfaUserProgressReport(userId);
         outMessages.push(startCard);
+      } else if (mode === 'learn' && vol !== undefined && mod !== undefined && checkIsModuleCompleted(user, vol, mod)) {
+        const allLearningModules = loadUserLearningModules();
+        const modCode = `m${mod < 10 ? '0' + mod : mod}`;
+        const lm = allLearningModules.find(m => m.module.toLowerCase() === modCode);
+        const moduleName = lm ? lm.moduleName : `LM${mod}`;
+        const completedCard = _buildCfaModuleCompletedFlexCard(user, vol, mod, moduleName);
+        outMessages.push(completedCard);
+      } else if (mode === 'drill') {
+        outMessages.push({
+          type: 'text',
+          text: '🐶 刷題模式會複習已練習過的題目！目前已學單元中尚未有練習紀錄，請先點選「複習單元題目」或從第一單元開始練習喔！'
+        });
       } else {
         outMessages.push({ type: 'text', text: '🐶 目前題庫中沒有找到符合的題目，請稍後再試！' });
       }
@@ -201,7 +282,7 @@ function _executeSingleCommand(
     return;
   }
 
-  // 6. CFA Progress Report: user says "皮皮 CFA 進度" or just "皮皮 CFA" / "皮皮 CFA！"
+  // 8. CFA Progress Report: user says "皮皮 CFA 進度" or just "皮皮 CFA" / "皮皮 CFA！"
   const isCfa = /cfa/i.test(text);
   const isProgress = /(?:進度|學習進度|筆記本|進度報告)/i.test(text);
   const isPureCfa = /^CFA[\s!！~～?？]*$/i.test(text);

@@ -31,6 +31,7 @@ interface UserLearningModule {
 }
 
 type CfaUser = 'Nuo' | 'Niu';
+type CfaQuizMode = 'learn' | 'review' | 'drill';
 
 const DEFAULT_CFA_SPREADSHEET_ID = '1uHIp7LFpbol8V1qFlptvX0HYQuSp5bLgjYAZztmONHY';
 const DEFAULT_CFA_SUMMARY_SPREADSHEET_ID = '1hBVc__SUK9j3G3FCCCv6GNQSuNmT8S3inHTNcOLe76c';
@@ -193,17 +194,63 @@ function recordCfaQuestionAttempt(
 }
 
 /**
- * Selects the next CFA question based on learning progress:
- * - If vol and mod are specified (e.g. V1 M1), only chooses from that module.
- * - Otherwise, chooses from all modules marked as learned in UserLearningProgress.
- * - If user has no learned modules yet and no module specified, returns null.
- * - Prioritizes questions with 0 learned count, then 0 answered, then lowest accuracy ratio.
+ * Returns mode tag string for button text suffixes.
+ */
+function _modeToTag(mode: CfaQuizMode): string {
+  if (mode === 'drill') return ' 刷題模式';
+  if (mode === 'review') return ' 複習模式';
+  return ' 學習模式';
+}
+
+/**
+ * Injects mode suffix into question button action texts so session mode persists.
+ */
+function _injectQuizModeIntoQuestionFlex(flexMessage: any, mode: CfaQuizMode): any {
+  const jsonStr = JSON.stringify(flexMessage);
+  const tag = _modeToTag(mode);
+  const updatedStr = jsonStr.replace(
+    /("text":\s*"皮皮 CFA (?:回答|解析)[^"]*?)(?:\s*(?:刷題模式|複習模式|學習模式))?(")/g,
+    `$1${tag}$2`
+  );
+  try {
+    return JSON.parse(updatedStr);
+  } catch (err) {
+    return flexMessage;
+  }
+}
+
+/**
+ * Injects mode suffix into solution feedback button action texts.
+ */
+function _injectQuizModeIntoSolutionFlex(flexMessage: any, mode: CfaQuizMode): any {
+  const jsonStr = JSON.stringify(flexMessage);
+  const tag = _modeToTag(mode);
+  const updatedStr = jsonStr.replace(
+    /("text":\s*"皮皮 CFA 學習狀態回報[^"]*?)(?:\s*(?:刷題模式|複習模式|學習模式))?(")/g,
+    `$1${tag}$2`
+  );
+  try {
+    return JSON.parse(updatedStr);
+  } catch (err) {
+    return flexMessage;
+  }
+}
+
+/**
+ * Selects the next CFA question based on learning progress and active mode:
+ * - 刷題模式 (mode='drill'): Chooses randomly from ANSWERED questions across all learned modules,
+ *   prioritizing lowest accuracy (錯題優先), then lowest learned count.
+ * - 複習模式 (mode='review'): Continuously serves questions from target module,
+ *   prioritizing lowest accuracy (錯題優先), then lowest learned count, without stopping for celebration.
+ * - 學習模式 (mode='learn'): First serves unseen questions sequentially, then unlearned questions,
+ *   and stops for celebration when module is completed.
  */
 function fetchNextCfaQuestion(
   userId?: string,
   targetVol?: number,
   targetMod?: number,
-  tabName: string = DEFAULT_CFA_TAB
+  tabName: string = DEFAULT_CFA_TAB,
+  mode: CfaQuizMode = 'learn'
 ): { record: CfaQuestionRecord; flexMessage: object } | null {
   const allRecords = loadCfaQuestionsFromSheet(tabName);
   if (allRecords.length === 0) return null;
@@ -226,57 +273,104 @@ function fetchNextCfaQuestion(
     return null;
   }
 
-  // 1. Check for un-learned questions (learnedCount === 0)
-  const unLearned = candidateRecords.filter(r => {
-    const lrnCount = user === 'Niu' ? r.niuLearned : r.nuoLearned;
-    return lrnCount === 0;
-  });
-
   let selected: CfaQuestionRecord;
-  if (unLearned.length > 0) {
-    const unAnswered = unLearned.filter(r => {
-      const ansCount = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
-      return ansCount === 0;
+
+  if (mode === 'drill') {
+    // 1. Drill mode (刷題模式):
+    // Scope: ONLY answered questions (Answered > 0) from learned modules. Exclude unseen questions.
+    const answeredCandidates = candidateRecords.filter(r => {
+      const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
+      return ans > 0;
     });
-    if (unAnswered.length > 0) {
-      selected = unAnswered[0];
-    } else {
-      unLearned.sort((a, b) => {
-        const aAns = user === 'Niu' ? a.niuAnswered : a.nuoAnswered;
-        const aCor = user === 'Niu' ? a.niuCorrect : a.nuoCorrect;
-        const bAns = user === 'Niu' ? b.niuAnswered : b.nuoAnswered;
-        const bCor = user === 'Niu' ? b.niuCorrect : b.nuoCorrect;
 
-        const aRatio = aAns > 0 ? aCor / aAns : 0;
-        const bRatio = bAns > 0 ? bCor / bAns : 0;
-
-        if (aRatio !== bRatio) return aRatio - bRatio;
-        return aAns - bAns;
-      });
-      selected = unLearned[0];
+    if (answeredCandidates.length === 0) {
+      return null;
     }
-  } else {
-    // 2. All questions are learned: sort by accuracy ratio ascending, then least learned
-    const sorted = [...candidateRecords].sort((a, b) => {
-      const aAns = user === 'Niu' ? a.niuAnswered : a.nuoAnswered;
-      const aCor = user === 'Niu' ? a.niuCorrect : a.nuoCorrect;
-      const aLrn = user === 'Niu' ? a.niuLearned : a.nuoLearned;
-      const bAns = user === 'Niu' ? b.niuAnswered : b.nuoAnswered;
-      const bCor = user === 'Niu' ? b.niuCorrect : b.nuoCorrect;
-      const bLrn = user === 'Niu' ? b.niuLearned : b.nuoLearned;
 
-      const aRatio = aAns > 0 ? aCor / aAns : 0;
-      const bRatio = bAns > 0 ? bCor / bAns : 0;
-
-      if (aRatio !== bRatio) return aRatio - bRatio;
-      if (aLrn !== bLrn) return aLrn - bLrn;
-      return aAns - bAns;
+    // Priority:
+    // 1. Lowest Correct count ascending (cor ascending) -> 錯題/少對優先
+    // 2. 低熟悉度優先: Learned = 0 first, then lowest learned count ascending
+    // 3. Lowest answered count ascending
+    const scored = answeredCandidates.map(r => {
+      const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
+      const cor = user === 'Niu' ? r.niuCorrect : r.nuoCorrect;
+      const lrn = user === 'Niu' ? r.niuLearned : r.nuoLearned;
+      return { record: r, cor, lrn, ans };
     });
-    selected = sorted[0];
+
+    scored.sort((a, b) => {
+      if (a.cor !== b.cor) return a.cor - b.cor;
+      if (a.lrn !== b.lrn) return a.lrn - b.lrn;
+      return a.ans - b.ans;
+    });
+
+    // Randomly pick one among top candidate tier sharing lowest cor and lowest lrn
+    const bestCor = scored[0].cor;
+    const bestLrn = scored[0].lrn;
+    const topTier = scored.filter(s => s.cor === bestCor && s.lrn === bestLrn);
+    const chosen = topTier[Math.floor(Math.random() * topTier.length)];
+    selected = chosen.record;
+  } else if (mode === 'review') {
+    // 2. Review mode (複習模式):
+    // Keeps giving questions continuously based on:
+    // 1. Lowest Correct count ascending (cor ascending) -> 錯題/少對優先
+    // 2. Lowest Learned count ascending -> 低熟悉度優先
+    // 3. Lowest Answered count ascending
+    const scored = candidateRecords.map(r => {
+      const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
+      const cor = user === 'Niu' ? r.niuCorrect : r.nuoCorrect;
+      const lrn = user === 'Niu' ? r.niuLearned : r.nuoLearned;
+      return { record: r, cor, lrn, ans };
+    });
+
+    scored.sort((a, b) => {
+      if (a.cor !== b.cor) return a.cor - b.cor;
+      if (a.lrn !== b.lrn) return a.lrn - b.lrn;
+      return a.ans - b.ans;
+    });
+
+    selected = scored[0].record;
+  } else {
+    // 3. Learn mode (學習模式):
+    // 1. Unseen questions (Answered = 0) in sequential textbook order
+    const unseen = candidateRecords.filter(r => {
+      const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
+      return ans === 0;
+    });
+
+    if (unseen.length > 0) {
+      selected = unseen[0];
+    } else {
+      // 2. Filter for remaining unlearned questions (Learned = 0)
+      const unlearned = candidateRecords.filter(r => {
+        const lrn = user === 'Niu' ? r.niuLearned : r.nuoLearned;
+        return lrn === 0;
+      });
+
+      if (unlearned.length === 0) {
+        // All questions in this module are already learned! (Learning mode completes)
+        return null;
+      }
+
+      // Sort unlearned questions by: Lowest Correct count -> Lowest Answered count
+      const scored = unlearned.map(r => {
+        const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
+        const cor = user === 'Niu' ? r.niuCorrect : r.nuoCorrect;
+        return { record: r, cor, ans };
+      });
+
+      scored.sort((a, b) => {
+        if (a.cor !== b.cor) return a.cor - b.cor;
+        return a.ans - b.ans;
+      });
+
+      selected = scored[0].record;
+    }
   }
 
   try {
-    const flexMessage = JSON.parse(selected.questionJson);
+    let flexMessage = JSON.parse(selected.questionJson);
+    flexMessage = _injectQuizModeIntoQuestionFlex(flexMessage, mode);
     return { record: selected, flexMessage };
   } catch (err) {
     logError('fetchNextCfaQuestion', `Failed to parse question JSON: ${err}`);
@@ -318,6 +412,7 @@ function handleCfaAnswerSubmission(
   num: number,
   chosenOption: string,
   userId?: string,
+  mode: CfaQuizMode = 'learn',
   tabName: string = DEFAULT_CFA_TAB
 ): { isCorrect: boolean; flexMessage: object } | null {
   const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
@@ -335,7 +430,7 @@ function handleCfaAnswerSubmission(
     : `❌ 答錯囉（你選了 ${chosen}）✅ 正確答案是 ${record.answer}`;
 
   try {
-    const flexMessage: any = JSON.parse(record.solutionJson);
+    let flexMessage: any = JSON.parse(record.solutionJson);
     const bubble = flexMessage.type === 'flex' ? flexMessage.contents : flexMessage;
 
     // Insert banner card at the very top of body contents
@@ -361,6 +456,8 @@ function handleCfaAnswerSubmission(
       bubble.body.contents.unshift(bannerBox, { type: 'separator', margin: 'md' });
     }
 
+    flexMessage = _injectQuizModeIntoSolutionFlex(flexMessage, mode);
+
     return { isCorrect, flexMessage };
   } catch (err) {
     logError('handleCfaAnswerSubmission', `Failed to parse solution JSON: ${err}`);
@@ -378,6 +475,7 @@ function fetchCfaSolutionByRef(
   typeCode: string,
   num: number,
   userId?: string,
+  mode: CfaQuizMode = 'learn',
   tabName: string = DEFAULT_CFA_TAB
 ): object | null {
   const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
@@ -388,7 +486,9 @@ function fetchCfaSolutionByRef(
   recordCfaQuestionAttempt(record, user, true, tabName);
 
   try {
-    return JSON.parse(record.solutionJson);
+    let flexMessage = JSON.parse(record.solutionJson);
+    flexMessage = _injectQuizModeIntoSolutionFlex(flexMessage, mode);
+    return flexMessage;
   } catch (err) {
     logError('fetchCfaSolutionByRef', `Failed to parse solution JSON: ${err}`);
     return null;
@@ -645,8 +745,8 @@ function _buildCfaModuleCompletedFlexCard(
             height: 'sm',
             action: {
               type: 'message',
-              label: '練習其他單元的題目',
-              text: '皮皮 CFA 題目',
+              label: '複習隨機題目（刷題模式）',
+              text: '皮皮 CFA 題目 刷題模式',
             },
           },
         ],
@@ -709,7 +809,7 @@ function _buildCfaModuleSummaryActionCard(vol: number, mod: number): object {
             action: {
               type: 'message',
               label: '我會啦，練習題目',
-              text: `皮皮 CFA 學習狀態回報 V${vol} M${mod} && 皮皮 CFA 題目 V${vol} M${mod}`,
+              text: `皮皮 CFA 學習狀態回報 V${vol} M${mod} && 皮皮 CFA 學習題目 V${vol} M${mod}`,
             },
           },
           {
@@ -740,11 +840,183 @@ function _buildCfaModuleSummaryActionCard(vol: number, mod: number): object {
 }
 
 /**
+ * Returns all learned modules that still have unlearned questions (learnedCount < totalCount).
+ */
+function getIncompleteLearnedModules(user: CfaUser, tabName: string = DEFAULT_CFA_TAB): UserLearningModule[] {
+  const allLearningModules = loadUserLearningModules();
+  const learnedModules = allLearningModules.filter(m => (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned));
+  const allQuestions = loadCfaQuestionsFromSheet(tabName);
+
+  return learnedModules.filter(lm => {
+    const modCode = lm.module.toLowerCase();
+    const modQuestions = allQuestions.filter(q => q.module.toLowerCase() === modCode);
+    const totalCount = modQuestions.length;
+    if (totalCount === 0) return false;
+    const learnedCount = modQuestions.filter(q => (user === 'Niu' ? q.niuLearned : q.nuoLearned) > 0).length;
+    return learnedCount < totalCount;
+  });
+}
+
+/**
+ * Builds the Module Selector Flex Card for reviewing summaries, review quiz, or continuing learn quiz.
+ */
+function buildCfaModuleSelectorFlexCard(
+  userId: string | undefined,
+  mode: 'summary' | 'review_quiz' | 'learn_quiz'
+): object {
+  const user = resolveCfaUser(userId);
+  const allLearningModules = loadUserLearningModules();
+  const learnedModules = allLearningModules.filter(m => (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned));
+
+  let titleText = '📖 複習課本摘要';
+  if (mode === 'review_quiz') {
+    titleText = '✏️ 複習單元題目（錯題優先）';
+  } else if (mode === 'learn_quiz') {
+    titleText = '✏️ 繼續學習單元題目';
+  }
+  const altText = `📖 CFA LEVEL 1 · ${titleText}`;
+
+  if (learnedModules.length === 0) {
+    return {
+      type: 'flex',
+      altText,
+      contents: {
+        type: 'bubble',
+        size: 'mega',
+        header: {
+          type: 'box',
+          layout: 'vertical',
+          backgroundColor: '#0D2538',
+          paddingAll: 'lg',
+          contents: [
+            { type: 'text', text: '📖 CFA LEVEL 1', weight: 'bold', color: '#00C853', size: 'xs' },
+            { type: 'text', text: titleText, weight: 'bold', color: '#FFFFFF', size: 'md', margin: 'xs', wrap: true }
+          ]
+        },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          paddingAll: 'lg',
+          spacing: 'md',
+          contents: [
+            { type: 'text', text: `🐶 ${user} 目前尚未完成任何單元的導讀喔！請先開始第一單元！`, size: 'sm', color: '#333333', wrap: true },
+            { type: 'separator', margin: 'md' },
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#0D2538',
+              height: 'sm',
+              action: { type: 'message', label: '開始第一單元', text: '皮皮 CFA 課本摘要 V1 M1' }
+            }
+          ]
+        }
+      }
+    };
+  }
+
+  let targetList = learnedModules;
+  if (mode === 'learn_quiz') {
+    targetList = getIncompleteLearnedModules(user);
+    if (targetList.length === 0) {
+      return {
+        type: 'flex',
+        altText,
+        contents: {
+          type: 'bubble',
+          size: 'mega',
+          header: {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#0D2538',
+            paddingAll: 'lg',
+            contents: [
+              { type: 'text', text: '📖 CFA LEVEL 1', weight: 'bold', color: '#00C853', size: 'xs' },
+              { type: 'text', text: titleText, weight: 'bold', color: '#FFFFFF', size: 'md', margin: 'xs', wrap: true }
+            ]
+          },
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            paddingAll: 'lg',
+            spacing: 'md',
+            contents: [
+              { type: 'text', text: `🎉 ${user} 目前所有已學單元的題目都已經看懂囉！可點選「複習單元題目」或「複習隨機題目」！`, size: 'sm', color: '#333333', wrap: true },
+              { type: 'separator', margin: 'md' },
+              {
+                type: 'button',
+                style: 'primary',
+                color: '#0D2538',
+                height: 'sm',
+                action: { type: 'message', label: '複習單元題目', text: '皮皮 CFA 複習題目' }
+              }
+            ]
+          }
+        }
+      };
+    }
+  }
+
+  const buttons: object[] = targetList.map(lm => {
+    const volNum = parseInt(lm.volume.replace(/\D/g, ''), 10) || 1;
+    const modNum = parseInt(lm.module.replace(/\D/g, ''), 10) || 1;
+
+    let cmdText = `皮皮 CFA 課本摘要 V${volNum} M${modNum}`;
+    if (mode === 'review_quiz') {
+      cmdText = `皮皮 CFA 題目 V${volNum} M${modNum} 複習模式`;
+    } else if (mode === 'learn_quiz') {
+      cmdText = `皮皮 CFA 題目 V${volNum} M${modNum} 學習模式`;
+    }
+
+    const rawLabel = `LM${modNum}: ${lm.moduleName}`;
+    const label = rawLabel.length <= 38 ? rawLabel : rawLabel.slice(0, 37) + '…';
+
+    return {
+      type: 'button',
+      style: 'primary',
+      color: '#0D2538',
+      height: 'sm',
+      action: {
+        type: 'message',
+        label,
+        text: cmdText
+      }
+    };
+  });
+
+  return {
+    type: 'flex',
+    altText,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#0D2538',
+        paddingAll: 'lg',
+        contents: [
+          { type: 'text', text: '📖 CFA LEVEL 1', weight: 'bold', color: '#00C853', size: 'xs' },
+          { type: 'text', text: titleText, weight: 'bold', color: '#FFFFFF', size: 'md', margin: 'xs', wrap: true }
+        ]
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: 'lg',
+        spacing: 'sm',
+        contents: buttons,
+      }
+    }
+  };
+}
+
+/**
  * Builds the single Flex Card for CFA Progress Summary.
  */
 function _buildCfaProgressFlexCard(
   user: CfaUser,
   hasLearnedModules: boolean,
+  hasIncompleteLearnedModules: boolean,
   nextVol: number,
   nextMod: number,
   progressLines: string[]
@@ -771,6 +1043,20 @@ function _buildCfaProgressFlexCard(
       },
     });
   } else {
+    if (hasIncompleteLearnedModules) {
+      buttonContents.push({
+        type: 'button',
+        style: 'primary',
+        color: '#0D2538',
+        height: 'sm',
+        action: {
+          type: 'message',
+          label: '繼續學習單元題目',
+          text: '皮皮 CFA 學習題目',
+        },
+      });
+    }
+
     buttonContents.push(
       {
         type: 'button',
@@ -779,7 +1065,7 @@ function _buildCfaProgressFlexCard(
         height: 'sm',
         action: {
           type: 'message',
-          label: '下一單元',
+          label: `下一單元（V${nextVol}／LM${nextMod}）`,
           text: `皮皮 CFA 課本摘要 V${nextVol} M${nextMod}`,
         },
       },
@@ -789,8 +1075,29 @@ function _buildCfaProgressFlexCard(
         height: 'sm',
         action: {
           type: 'message',
-          label: '練習題目',
-          text: '皮皮 CFA 題目',
+          label: '複習單元摘要',
+          text: '皮皮 CFA 複習摘要',
+        },
+      },
+      {
+        type: 'button',
+        style: 'secondary',
+        height: 'sm',
+        action: {
+          type: 'message',
+          label: '複習單元題目',
+          text: '皮皮 CFA 複習題目',
+        },
+      },
+      {
+        type: 'button',
+        style: 'primary',
+        color: '#00C853',
+        height: 'sm',
+        action: {
+          type: 'message',
+          label: '複習隨機題目（刷題模式）',
+          text: '皮皮 CFA 題目 刷題模式',
         },
       }
     );
@@ -864,6 +1171,8 @@ function getCfaUserProgressReport(userId?: string): object {
   const allLearningModules = loadUserLearningModules();
   const learnedModules = allLearningModules.filter(m => (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned));
   const hasLearned = learnedModules.length > 0;
+  const incompleteModules = getIncompleteLearnedModules(user);
+  const hasIncomplete = incompleteModules.length > 0;
 
   let nextVol = 1;
   let nextMod = 1;
@@ -876,7 +1185,7 @@ function getCfaUserProgressReport(userId?: string): object {
   }
 
   const progressLines = _buildCumulativeProgressLines(user);
-  return _buildCfaProgressFlexCard(user, hasLearned, nextVol, nextMod, progressLines);
+  return _buildCfaProgressFlexCard(user, hasLearned, hasIncomplete, nextVol, nextMod, progressLines);
 }
 
 /**
