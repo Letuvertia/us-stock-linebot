@@ -127,7 +127,7 @@ function _executeSingleCommand(
     const typeCode = solutionMatch[3];
     const num = parseInt(solutionMatch[4], 10);
     logInfo(fnName, `CFA explanation match: V${vol} M${mod} ${typeCode}${num}`);
-    const solutionFlex = fetchCfaSolutionByRef(vol, mod, typeCode, num);
+    const solutionFlex = fetchCfaSolutionByRef(vol, mod, typeCode, num, userId);
     if (solutionFlex) {
       outMessages.push(solutionFlex);
     } else {
@@ -150,7 +150,7 @@ function _executeSingleCommand(
     const num = parseInt(answerMatch[4], 10);
     const chosen = answerMatch[5].toUpperCase();
     logInfo(fnName, `CFA answer match: V${vol} M${mod} ${typeCode}${num} -> ${chosen}`);
-    const res = handleCfaAnswerSubmission(vol, mod, typeCode, num, chosen);
+    const res = handleCfaAnswerSubmission(vol, mod, typeCode, num, chosen, userId);
     if (res) {
       outMessages.push(res.flexMessage);
     } else {
