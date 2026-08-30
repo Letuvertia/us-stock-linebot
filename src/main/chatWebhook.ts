@@ -183,23 +183,53 @@ function _executeSingleCommand(
     return;
   }
 
-  // 4. CFA Module Selectors: "皮皮 CFA 學習題目" / "皮皮 CFA 複習摘要" / "皮皮 CFA 複習題目"
+  // 4. CFA Module / Volume Selectors:
+  // A. Continue learning incomplete modules
   if (/^CFA\s*(?:學習題目|學習某單元題目|繼續學習某單元題目|繼續學習單元題目)(?!\s*V?\d+)/i.test(text)) {
     logInfo(fnName, 'CFA continue learn quiz selector request');
     const selectorCard = buildCfaModuleSelectorFlexCard(userId, 'learn_quiz');
     outMessages.push(selectorCard);
     return;
   }
-  if (/^CFA\s*(?:複習摘要|複習某單元摘要|複習摘要清單)/i.test(text)) {
-    logInfo(fnName, 'CFA review summary selector request');
-    const selectorCard = buildCfaModuleSelectorFlexCard(userId, 'summary');
+
+  // B. Summary menu: "皮皮 CFA 摘要選單", "皮皮 CFA 摘要選單 V1", "皮皮 CFA 查看單元摘要", "皮皮 CFA 複習摘要"
+  const summaryMenuMatch = /^CFA\s*(?:摘要選單|查看單元摘要|複習摘要|摘要清單|摘要)(?:\s*V?(\d+))?$/i.exec(text.trim());
+  if (summaryMenuMatch) {
+    const volNum = summaryMenuMatch[1] ? parseInt(summaryMenuMatch[1], 10) : undefined;
+    logInfo(fnName, `CFA summary menu request: vol=${volNum}`);
+    if (volNum !== undefined && volNum > 0) {
+      const selectorCard = buildCfaModuleSelectorForVolumeFlexCard(userId, volNum, 'summary');
+      outMessages.push(selectorCard);
+    } else {
+      const selectorCard = buildCfaVolumeSelectorFlexCard(userId, 'summary');
+      outMessages.push(selectorCard);
+    }
+    return;
+  }
+
+  // C. Quiz unlearned module confirmation: "皮皮 CFA 題目選單 V1 M2 確認"
+  const quizConfirmMatch = /^CFA\s*題目選單\s*V?(\d+)\s*M?(\d+)\s*確認/i.exec(text.trim());
+  if (quizConfirmMatch) {
+    const volNum = parseInt(quizConfirmMatch[1], 10);
+    const modNum = parseInt(quizConfirmMatch[2], 10);
+    logInfo(fnName, `CFA unlearned module quiz confirm: V${volNum} M${modNum}`);
+    const selectorCard = buildCfaUnlearnedModuleConfirmFlexCard(volNum, modNum);
     outMessages.push(selectorCard);
     return;
   }
-  if (/^CFA\s*(?:複習題目|複習某單元題目|複習題目清單)(?!\s*V?\d+)/i.test(text)) {
-    logInfo(fnName, 'CFA review quiz selector request');
-    const selectorCard = buildCfaModuleSelectorFlexCard(userId, 'review_quiz');
-    outMessages.push(selectorCard);
+
+  // D. Quiz menu: "皮皮 CFA 題目選單", "皮皮 CFA 題目選單 V1", "皮皮 CFA 練習單元題目", "皮皮 CFA 複習題目"
+  const quizMenuMatch = /^CFA\s*(?:題目選單|練習單元題目|複習題目|題目清單)(?:\s*V?(\d+))?$/i.exec(text.trim());
+  if (quizMenuMatch) {
+    const volNum = quizMenuMatch[1] ? parseInt(quizMenuMatch[1], 10) : undefined;
+    logInfo(fnName, `CFA quiz menu request: vol=${volNum}`);
+    if (volNum !== undefined && volNum > 0) {
+      const selectorCard = buildCfaModuleSelectorForVolumeFlexCard(userId, volNum, 'quiz');
+      outMessages.push(selectorCard);
+    } else {
+      const selectorCard = buildCfaVolumeSelectorFlexCard(userId, 'quiz');
+      outMessages.push(selectorCard);
+    }
     return;
   }
 
