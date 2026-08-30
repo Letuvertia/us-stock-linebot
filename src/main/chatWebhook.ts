@@ -245,9 +245,9 @@ function _executeSingleCommand(
     return;
   }
 
-  // 7. CFA Question Request: "皮皮 CFA 學習題目 V1 M1", "皮皮 CFA 複習題目 V1 M1", or "皮皮 CFA 題目 V1 M1"
-  const questionMatch = /^CFA\s*(?:學習題目|複習題目|題目|問題|考題|quiz)(?:\s*V?(\d+)\s*M?(\d+))?/i.exec(text);
-  if (questionMatch || (/cfa/i.test(text) && /(?:問題|題目|考題|quiz)/i.test(text))) {
+  // 7. CFA Question Request: "皮皮 CFA 題目 V1 M1 學習模式", "皮皮 CFA 題目 V1 M1 複習模式", or "皮皮 CFA 題目 V1 M1"
+  const questionMatch = /^CFA\s*(?:題目|問題|考題|quiz)(?:\s*V?(\d+)\s*M?(\d+))?/i.exec(text);
+  if (questionMatch) {
     const vol = questionMatch && questionMatch[1] ? parseInt(questionMatch[1], 10) : undefined;
     const mod = questionMatch && questionMatch[2] ? parseInt(questionMatch[2], 10) : undefined;
     const isDrill = /刷題/i.test(text);

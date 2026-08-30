@@ -26,6 +26,9 @@ interface UserLearningModule {
   volumeName: string;     // "Quantitative Methods"
   module: string;         // "m01"
   moduleName: string;     // "Rates and Returns"
+  numberOfExamples: number;
+  numberOfProblems: number;
+  isReady: boolean;
   isNiuLearned: boolean;
   isNuoLearned: boolean;
 }
@@ -37,6 +40,26 @@ const DEFAULT_CFA_SPREADSHEET_ID = '1uHIp7LFpbol8V1qFlptvX0HYQuSp5bLgjYAZztmONHY
 const DEFAULT_CFA_SUMMARY_SPREADSHEET_ID = '1hBVc__SUK9j3G3FCCCv6GNQSuNmT8S3inHTNcOLe76c';
 const DEFAULT_CFA_TAB = 'v01-quantitative-methods';
 const USER_LEARNING_PROGRESS_TAB = 'UserLearningProgress';
+
+const CFA_VOLUME_TABS: Record<number, string> = {
+  1: 'v01-quantitative-methods',
+  2: 'v02-economics',
+  3: 'v03-corporate-issuers',
+  4: 'v04-financial-statement-analysis',
+  5: 'v05-equity-investments',
+  6: 'v06-fixed-income',
+  7: 'v07-derivatives',
+  8: 'v08-alternative-investments',
+  9: 'v09-portfolio-management',
+  10: 'v10-ethical-and-professional-standards',
+};
+
+/**
+ * Maps volume number (1-10) to corresponding Google Sheet tab name.
+ */
+function getCfaVolumeTab(vol: number = 1): string {
+  return CFA_VOLUME_TABS[vol] || DEFAULT_CFA_TAB;
+}
 
 /**
  * Opens the CFA Question Bank spreadsheet.
@@ -67,23 +90,28 @@ function resolveCfaUser(userId?: string): CfaUser {
 }
 
 /**
- * Loads the user learning history table from UserLearningProgress tab.
+ * Loads the user learning history table from UserLearningProgress tab (9 columns).
  */
 function loadUserLearningModules(): UserLearningModule[] {
   try {
     const sheet = _getCfaSummarySpreadsheet().getSheetByName(USER_LEARNING_PROGRESS_TAB);
     if (!sheet || sheet.getLastRow() <= 1) return [];
 
-    const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+    const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
     const modules: UserLearningModule[] = [];
 
     for (const row of rawRows) {
-      const vol = String(row[0] || '').trim();
+      const vol = String(row[0] || '').trim().toLowerCase();
       const mod = String(row[2] || '').trim().toLowerCase();
       if (!vol || !mod) continue;
 
-      const niuVal = String(row[4] || '').trim().toUpperCase();
-      const nuoVal = String(row[5] || '').trim().toUpperCase();
+      const numEx = Number(row[4]) || 0;
+      const numPr = Number(row[5]) || 0;
+      const readyVal = String(row[6] || '').trim().toUpperCase();
+      const isReady = readyVal === 'TRUE' || readyVal === '1';
+
+      const niuVal = String(row[7] || '').trim().toUpperCase();
+      const nuoVal = String(row[8] || '').trim().toUpperCase();
 
       const isNiu = niuVal === 'TRUE' || niuVal === '1' || niuVal === 'CHECKED';
       const isNuo = nuoVal === 'TRUE' || nuoVal === '1' || nuoVal === 'CHECKED';
@@ -93,6 +121,9 @@ function loadUserLearningModules(): UserLearningModule[] {
         volumeName: String(row[1] || '').trim(),
         module: mod,
         moduleName: String(row[3] || '').trim(),
+        numberOfExamples: numEx,
+        numberOfProblems: numPr,
+        isReady,
         isNiuLearned: isNiu,
         isNuoLearned: isNuo,
       });
@@ -637,15 +668,17 @@ function updateCfaModuleLearningProgress(
     return { success: false, user, message: `找不到進度表 ${USER_LEARNING_PROGRESS_TAB}` };
   }
 
+  const volCode = `v${vol < 10 ? '0' + vol : vol}`;
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
-  const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
-  const col = user === 'Niu' ? 5 : 6;
+  const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  const col = user === 'Niu' ? 8 : 9;
 
   for (let i = 0; i < rawRows.length; i++) {
+    const rowVol = String(rawRows[i][0] || '').trim().toLowerCase();
     const rowMod = String(rawRows[i][2] || '').trim().toLowerCase();
-    if (rowMod === modCode) {
+    if (rowVol === volCode && rowMod === modCode) {
       const rowIndex = i + 2;
-      sheet.getRange(rowIndex, col).setValue(isLearned ? 'TRUE' : '');
+      sheet.getRange(rowIndex, col).setValue(isLearned ? 'TRUE' : 'FALSE');
       return {
         success: true,
         user,
@@ -760,10 +793,11 @@ function _buildCfaModuleCompletedFlexCard(
  */
 function _buildCfaModuleSummaryActionCard(vol: number, mod: number): object {
   const nextMod = mod + 1;
+  const volCode = `v${vol < 10 ? '0' + vol : vol}`;
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
   const allLearningModules = loadUserLearningModules();
-  const lm = allLearningModules.find(m => m.module.toLowerCase() === modCode);
-  const moduleName = lm ? lm.moduleName : 'Rates and Returns';
+  const lm = allLearningModules.find(m => m.volume.toLowerCase() === volCode && m.module.toLowerCase() === modCode);
+  const moduleName = lm ? lm.moduleName : `LM${mod}`;
 
   return {
     type: 'flex',
@@ -809,7 +843,7 @@ function _buildCfaModuleSummaryActionCard(vol: number, mod: number): object {
             action: {
               type: 'message',
               label: '我會啦，練習題目',
-              text: `皮皮 CFA 學習狀態回報 V${vol} M${mod} && 皮皮 CFA 學習題目 V${vol} M${mod}`,
+              text: `皮皮 CFA 學習狀態回報 V${vol} M${mod} && 皮皮 CFA 題目 V${vol} M${mod} 學習模式`,
             },
           },
           {
