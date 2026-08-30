@@ -5,6 +5,7 @@
 The system is a hybrid application:
 - **GAS TypeScript Bot (`src/`)**: Handles LINE webhook interactions, command parsing, and scheduled reporting. GAS operates in **read-only** mode against Google Sheets.
 - **Python Collectors (`scripts/`)**: Gathers market quotes, analyst estimates, news feeds, and podcasts via GitHub Actions and local cron jobs. Python collectors own all writes to Google Sheets.
+- **CFA Materials Repository (`cfa-materials`)**: A sibling repository cloned at `../cfa-materials` containing extracted questions in LINE Flex Message format and summarized key concepts that are synced to Google Sheets for GAS to fetch and send Flex messages to users for CFA practice.
 - **Google Sheets**: Serves as the central shared database (historical sheets, metadata, and cache).
 
 See [README.md](file:///home/letuvertia/us-stock-linebot/README.md) for full architecture diagrams, command syntax, database schemas, repository layout, and feature specifications.
@@ -69,4 +70,12 @@ Google Sheets serves as the database for market quotes, news, podcast transcript
 
 - **User Config Spreadsheet (`USER_CONFIG_SPREADSHEET_ID`)**:
   - Stores user portfolio allocations (`UserHoldings`), historical trade and foreign exchange transactions (`UserHoldingTransactions`), news keyword preferences (`News Keywords`), and customized industry classifications (`Industry Category`).
+
+- **CFA Module Summary Spreadsheet (`CFA_SUMMARY_SPREADSHEET_ID`)**:
+  - `UserLearningProgress`: Master tracking tab across modules. Tracks module titles, curriculum readiness (`Ready`), and user learning completion checkmarks (`Niu`, `Nuo`).
+  - Volume tabs (`v01-quantitative-methods`, `v02-economics`, ..., `v10-ethical-and-professional-standards`): Stores Markdown textbook summaries (`key-concept-zh.md`) for GAS to fetch and display.
+
+- **CFA Question Bank Spreadsheet (`CFA_QUESTION_SPREADSHEET_ID`)**:
+  - Volume tabs (`v01-quantitative-methods`, `v02-economics`, ..., `v10-ethical-and-professional-standards`): Stores question metadata, answer keys, user practice statistics (`NuoHistory_*`, `NiuHistory_*`), and raw Flex Message cards (`Question_FlexMessageJSON`, `Solution_FlexMessageJSON`) sent directly to users.
+
 
