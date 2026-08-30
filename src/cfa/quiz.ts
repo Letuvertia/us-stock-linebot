@@ -26,6 +26,9 @@ interface UserLearningModule {
   volumeName: string;     // "Quantitative Methods"
   module: string;         // "m01"
   moduleName: string;     // "Rates and Returns"
+  numberOfExamples: number;
+  numberOfProblems: number;
+  isReady: boolean;
   isNiuLearned: boolean;
   isNuoLearned: boolean;
 }
@@ -37,6 +40,26 @@ const DEFAULT_CFA_SPREADSHEET_ID = '1uHIp7LFpbol8V1qFlptvX0HYQuSp5bLgjYAZztmONHY
 const DEFAULT_CFA_SUMMARY_SPREADSHEET_ID = '1hBVc__SUK9j3G3FCCCv6GNQSuNmT8S3inHTNcOLe76c';
 const DEFAULT_CFA_TAB = 'v01-quantitative-methods';
 const USER_LEARNING_PROGRESS_TAB = 'UserLearningProgress';
+
+const CFA_VOLUME_TABS: Record<number, string> = {
+  1: 'v01-quantitative-methods',
+  2: 'v02-economics',
+  3: 'v03-corporate-issuers',
+  4: 'v04-financial-statement-analysis',
+  5: 'v05-equity-investments',
+  6: 'v06-fixed-income',
+  7: 'v07-derivatives',
+  8: 'v08-alternative-investments',
+  9: 'v09-portfolio-management',
+  10: 'v10-ethical-and-professional-standards',
+};
+
+/**
+ * Maps volume number (1-10) to corresponding Google Sheet tab name.
+ */
+function getCfaVolumeTab(vol: number = 1): string {
+  return CFA_VOLUME_TABS[vol] || DEFAULT_CFA_TAB;
+}
 
 /**
  * Opens the CFA Question Bank spreadsheet.
@@ -67,23 +90,28 @@ function resolveCfaUser(userId?: string): CfaUser {
 }
 
 /**
- * Loads the user learning history table from UserLearningProgress tab.
+ * Loads the user learning history table from UserLearningProgress tab (9 columns).
  */
 function loadUserLearningModules(): UserLearningModule[] {
   try {
     const sheet = _getCfaSummarySpreadsheet().getSheetByName(USER_LEARNING_PROGRESS_TAB);
     if (!sheet || sheet.getLastRow() <= 1) return [];
 
-    const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+    const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
     const modules: UserLearningModule[] = [];
 
     for (const row of rawRows) {
-      const vol = String(row[0] || '').trim();
+      const vol = String(row[0] || '').trim().toLowerCase();
       const mod = String(row[2] || '').trim().toLowerCase();
       if (!vol || !mod) continue;
 
-      const niuVal = String(row[4] || '').trim().toUpperCase();
-      const nuoVal = String(row[5] || '').trim().toUpperCase();
+      const numEx = Number(row[4]) || 0;
+      const numPr = Number(row[5]) || 0;
+      const readyVal = String(row[6] || '').trim().toUpperCase();
+      const isReady = readyVal === 'TRUE' || readyVal === '1';
+
+      const niuVal = String(row[7] || '').trim().toUpperCase();
+      const nuoVal = String(row[8] || '').trim().toUpperCase();
 
       const isNiu = niuVal === 'TRUE' || niuVal === '1' || niuVal === 'CHECKED';
       const isNuo = nuoVal === 'TRUE' || nuoVal === '1' || nuoVal === 'CHECKED';
@@ -93,6 +121,9 @@ function loadUserLearningModules(): UserLearningModule[] {
         volumeName: String(row[1] || '').trim(),
         module: mod,
         moduleName: String(row[3] || '').trim(),
+        numberOfExamples: numEx,
+        numberOfProblems: numPr,
+        isReady,
         isNiuLearned: isNiu,
         isNuoLearned: isNuo,
       });
@@ -119,9 +150,14 @@ function getLearnedModuleCodes(user: CfaUser): string[] {
  */
 function isModuleLearnedByUser(vol: number, mod: number, userId?: string): boolean {
   const user = resolveCfaUser(userId);
+  const volCode = `v${vol < 10 ? '0' + vol : vol}`;
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
-  const learned = getLearnedModuleCodes(user);
-  return learned.includes(modCode);
+  const allModules = loadUserLearningModules();
+  return allModules.some(m =>
+    m.volume.toLowerCase() === volCode &&
+    m.module.toLowerCase() === modCode &&
+    (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned)
+  );
 }
 
 /**
@@ -238,7 +274,7 @@ function _injectQuizModeIntoSolutionFlex(flexMessage: any, mode: CfaQuizMode): a
 
 /**
  * Selects the next CFA question based on learning progress and active mode:
- * - 刷題模式 (mode='drill'): Chooses randomly from ANSWERED questions across all learned modules,
+ * - 刷題模式 (mode='drill'): Chooses randomly from ANSWERED questions across all learned modules across all volumes,
  *   prioritizing lowest accuracy (錯題優先), then lowest learned count.
  * - 複習模式 (mode='review'): Continuously serves questions from target module,
  *   prioritizing lowest accuracy (錯題優先), then lowest learned count, without stopping for celebration.
@@ -249,24 +285,82 @@ function fetchNextCfaQuestion(
   userId?: string,
   targetVol?: number,
   targetMod?: number,
-  tabName: string = DEFAULT_CFA_TAB,
+  tabName?: string,
   mode: CfaQuizMode = 'learn'
 ): { record: CfaQuestionRecord; flexMessage: object } | null {
-  const allRecords = loadCfaQuestionsFromSheet(tabName);
-  if (allRecords.length === 0) return null;
-
   const user = resolveCfaUser(userId);
+
+  if (mode === 'drill' && targetVol === undefined) {
+    // Collect answered candidates across all learned modules in their respective volume tabs
+    const allLearningModules = loadUserLearningModules();
+    const learnedModules = allLearningModules.filter(m => (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned) && m.isReady);
+    if (learnedModules.length === 0) return null;
+
+    const volMap: Record<string, string[]> = {};
+    for (const lm of learnedModules) {
+      const v = lm.volume.toLowerCase();
+      if (!volMap[v]) volMap[v] = [];
+      volMap[v].push(lm.module.toLowerCase());
+    }
+
+    let allAnsweredCandidates: CfaQuestionRecord[] = [];
+    for (const [vCode, modCodes] of Object.entries(volMap)) {
+      const vNum = parseInt(vCode.replace(/\D/g, ''), 10) || 1;
+      const tName = getCfaVolumeTab(vNum);
+      const qs = loadCfaQuestionsFromSheet(tName);
+      const ansQs = qs.filter(q => modCodes.includes(q.module.toLowerCase()) && (user === 'Niu' ? q.niuAnswered : q.nuoAnswered) > 0);
+      allAnsweredCandidates.push(...ansQs);
+    }
+
+    if (allAnsweredCandidates.length === 0) return null;
+
+    const scored = allAnsweredCandidates.map(r => {
+      const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
+      const cor = user === 'Niu' ? r.niuCorrect : r.nuoCorrect;
+      const lrn = user === 'Niu' ? r.niuLearned : r.nuoLearned;
+      return { record: r, cor, lrn, ans };
+    });
+
+    scored.sort((a, b) => {
+      if (a.cor !== b.cor) return a.cor - b.cor;
+      if (a.lrn !== b.lrn) return a.lrn - b.lrn;
+      return a.ans - b.ans;
+    });
+
+    const bestCor = scored[0].cor;
+    const bestLrn = scored[0].lrn;
+    const topTier = scored.filter(s => s.cor === bestCor && s.lrn === bestLrn);
+    const chosen = topTier[Math.floor(Math.random() * topTier.length)];
+    const selected = chosen.record;
+
+    try {
+      let flexMessage = JSON.parse(selected.questionJson);
+      flexMessage = _injectQuizModeIntoQuestionFlex(flexMessage, mode);
+      return { record: selected, flexMessage };
+    } catch (err) {
+      logError('fetchNextCfaQuestion', `Failed to parse question JSON: ${err}`);
+      return null;
+    }
+  }
+
+  const resolvedTab = tabName || getCfaVolumeTab(targetVol || 1);
+  const allRecords = loadCfaQuestionsFromSheet(resolvedTab);
+  if (allRecords.length === 0) return null;
 
   let candidateRecords: CfaQuestionRecord[] = [];
   if (targetMod !== undefined && targetMod > 0) {
     const modCode = `m${targetMod < 10 ? '0' + targetMod : targetMod}`;
     candidateRecords = allRecords.filter(r => r.module.toLowerCase() === modCode);
   } else {
-    const learnedModules = getLearnedModuleCodes(user);
-    if (learnedModules.length === 0) {
+    const allLearningModules = loadUserLearningModules();
+    const targetVolCode = `v${(targetVol || 1) < 10 ? '0' + (targetVol || 1) : (targetVol || 1)}`;
+    const learnedModCodes = allLearningModules
+      .filter(m => m.volume.toLowerCase() === targetVolCode && (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned))
+      .map(m => m.module.toLowerCase());
+    if (learnedModCodes.length === 0) {
       return null;
     }
-    candidateRecords = allRecords.filter(r => learnedModules.includes(r.module.toLowerCase()));
+    candidateRecords = allRecords.filter(r => learnedModCodes.includes(r.module.toLowerCase()));
   }
 
   if (candidateRecords.length === 0) {
@@ -276,8 +370,6 @@ function fetchNextCfaQuestion(
   let selected: CfaQuestionRecord;
 
   if (mode === 'drill') {
-    // 1. Drill mode (刷題模式):
-    // Scope: ONLY answered questions (Answered > 0) from learned modules. Exclude unseen questions.
     const answeredCandidates = candidateRecords.filter(r => {
       const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
       return ans > 0;
@@ -287,10 +379,6 @@ function fetchNextCfaQuestion(
       return null;
     }
 
-    // Priority:
-    // 1. Lowest Correct count ascending (cor ascending) -> 錯題/少對優先
-    // 2. 低熟悉度優先: Learned = 0 first, then lowest learned count ascending
-    // 3. Lowest answered count ascending
     const scored = answeredCandidates.map(r => {
       const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
       const cor = user === 'Niu' ? r.niuCorrect : r.nuoCorrect;
@@ -304,18 +392,12 @@ function fetchNextCfaQuestion(
       return a.ans - b.ans;
     });
 
-    // Randomly pick one among top candidate tier sharing lowest cor and lowest lrn
     const bestCor = scored[0].cor;
     const bestLrn = scored[0].lrn;
     const topTier = scored.filter(s => s.cor === bestCor && s.lrn === bestLrn);
     const chosen = topTier[Math.floor(Math.random() * topTier.length)];
     selected = chosen.record;
   } else if (mode === 'review') {
-    // 2. Review mode (複習模式):
-    // Keeps giving questions continuously based on:
-    // 1. Lowest Correct count ascending (cor ascending) -> 錯題/少對優先
-    // 2. Lowest Learned count ascending -> 低熟悉度優先
-    // 3. Lowest Answered count ascending
     const scored = candidateRecords.map(r => {
       const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
       const cor = user === 'Niu' ? r.niuCorrect : r.nuoCorrect;
@@ -331,8 +413,6 @@ function fetchNextCfaQuestion(
 
     selected = scored[0].record;
   } else {
-    // 3. Learn mode (學習模式):
-    // 1. Unseen questions (Answered = 0) in sequential textbook order
     const unseen = candidateRecords.filter(r => {
       const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
       return ans === 0;
@@ -341,18 +421,15 @@ function fetchNextCfaQuestion(
     if (unseen.length > 0) {
       selected = unseen[0];
     } else {
-      // 2. Filter for remaining unlearned questions (Learned = 0)
       const unlearned = candidateRecords.filter(r => {
         const lrn = user === 'Niu' ? r.niuLearned : r.nuoLearned;
         return lrn === 0;
       });
 
       if (unlearned.length === 0) {
-        // All questions in this module are already learned! (Learning mode completes)
         return null;
       }
 
-      // Sort unlearned questions by: Lowest Correct count -> Lowest Answered count
       const scored = unlearned.map(r => {
         const ans = user === 'Niu' ? r.niuAnswered : r.nuoAnswered;
         const cor = user === 'Niu' ? r.niuCorrect : r.nuoCorrect;
@@ -386,9 +463,10 @@ function findCfaQuestionByRef(
   mod: number,
   typeCode: string,
   num: number,
-  tabName: string = DEFAULT_CFA_TAB
+  tabName?: string
 ): CfaQuestionRecord | null {
-  const records = loadCfaQuestionsFromSheet(tabName);
+  const resolvedTab = tabName || getCfaVolumeTab(vol);
+  const records = loadCfaQuestionsFromSheet(resolvedTab);
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
   const isExample = /^(?:ex|example)$/i.test(typeCode.trim());
   const typeName = isExample ? 'Example' : 'Problem';
@@ -413,9 +491,10 @@ function handleCfaAnswerSubmission(
   chosenOption: string,
   userId?: string,
   mode: CfaQuizMode = 'learn',
-  tabName: string = DEFAULT_CFA_TAB
+  tabName?: string
 ): { isCorrect: boolean; flexMessage: object } | null {
-  const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
+  const resolvedTab = tabName || getCfaVolumeTab(vol);
+  const record = findCfaQuestionByRef(vol, mod, typeCode, num, resolvedTab);
   if (!record || !record.solutionJson) return null;
 
   const chosen = chosenOption.trim().toUpperCase();
@@ -423,7 +502,7 @@ function handleCfaAnswerSubmission(
   const user = resolveCfaUser(userId);
 
   // Update Answered (+1) and Correct (+1 if correct) in Sheet
-  recordCfaQuestionAttempt(record, user, isCorrect, tabName);
+  recordCfaQuestionAttempt(record, user, isCorrect, resolvedTab);
 
   const bannerText = isCorrect
     ? `🎉 答對了！✅ 正確答案是 ${record.answer}`
@@ -476,14 +555,15 @@ function fetchCfaSolutionByRef(
   num: number,
   userId?: string,
   mode: CfaQuizMode = 'learn',
-  tabName: string = DEFAULT_CFA_TAB
+  tabName?: string
 ): object | null {
-  const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
+  const resolvedTab = tabName || getCfaVolumeTab(vol);
+  const record = findCfaQuestionByRef(vol, mod, typeCode, num, resolvedTab);
   if (!record || !record.solutionJson) return null;
 
   const user = resolveCfaUser(userId);
   // For explanation requests (解析): update answered (+1) and correct (+1)
-  recordCfaQuestionAttempt(record, user, true, tabName);
+  recordCfaQuestionAttempt(record, user, true, resolvedTab);
 
   try {
     let flexMessage = JSON.parse(record.solutionJson);
@@ -513,25 +593,25 @@ const CFA_FEEDBACK_HEADERS = [
 function _buildCumulativeProgressLines(user: CfaUser): string[] {
   const allLearningModules = loadUserLearningModules();
   const learnedModules = allLearningModules.filter(m => (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned));
-  const allQuestions = loadCfaQuestionsFromSheet(DEFAULT_CFA_TAB);
   const moduleLines: string[] = [];
 
   for (const lm of learnedModules) {
+    const totalCount = lm.numberOfExamples + lm.numberOfProblems;
+    if (totalCount === 0) continue;
+
+    const volNum = parseInt(lm.volume.replace(/\D/g, ''), 10) || 1;
+    const modNum = parseInt(lm.module.replace(/\D/g, ''), 10) || 1;
+    const tabName = getCfaVolumeTab(volNum);
+    const allQuestions = loadCfaQuestionsFromSheet(tabName);
     const modCode = lm.module.toLowerCase();
     const modQuestions = allQuestions.filter(q => q.module.toLowerCase() === modCode);
-    const totalCount = modQuestions.length;
-
-    if (totalCount === 0) continue;
 
     const learnedCount = modQuestions.filter(q => {
       const lrn = user === 'Niu' ? q.niuLearned : q.nuoLearned;
       return lrn > 0;
     }).length;
 
-    const isAllLearned = totalCount > 0 && learnedCount >= totalCount;
-    const volNum = parseInt(lm.volume.replace(/\D/g, ''), 10) || 1;
-    const modNum = parseInt(lm.module.replace(/\D/g, ''), 10) || 1;
-
+    const isAllLearned = learnedCount >= totalCount;
     const prefix = isAllLearned ? '✅ ' : '🚀 ';
     moduleLines.push(`${prefix}V${volNum} / LM${modNum} - ${lm.moduleName}: ${learnedCount}/${totalCount}`);
   }
@@ -550,13 +630,19 @@ function checkIsModuleCompleted(
   user: CfaUser,
   vol: number,
   mod: number,
-  tabName: string = DEFAULT_CFA_TAB
+  tabName?: string
 ): boolean {
-  const allQuestions = loadCfaQuestionsFromSheet(tabName);
+  const resolvedTab = tabName || getCfaVolumeTab(vol);
+  const volCode = `v${vol < 10 ? '0' + vol : vol}`;
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
-  const modQuestions = allQuestions.filter(q => q.module.toLowerCase() === modCode);
-  const totalCount = modQuestions.length;
+  const allLearningModules = loadUserLearningModules();
+  const lm = allLearningModules.find(m => m.volume.toLowerCase() === volCode && m.module.toLowerCase() === modCode);
+  
+  const totalCount = lm ? (lm.numberOfExamples + lm.numberOfProblems) : 0;
   if (totalCount === 0) return false;
+
+  const allQuestions = loadCfaQuestionsFromSheet(resolvedTab);
+  const modQuestions = allQuestions.filter(q => q.module.toLowerCase() === modCode);
 
   const learnedCount = modQuestions.filter(q => {
     const lrn = user === 'Niu' ? q.niuLearned : q.nuoLearned;
@@ -578,9 +664,10 @@ function updateCfaLearningFeedback(
   num: number,
   isKnown: boolean,
   userId?: string,
-  tabName: string = DEFAULT_CFA_TAB
+  tabName?: string
 ): { success: boolean; user: CfaUser; record: CfaQuestionRecord; message: string } {
-  const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
+  const resolvedTab = tabName || getCfaVolumeTab(vol);
+  const record = findCfaQuestionByRef(vol, mod, typeCode, num, resolvedTab);
   if (!record) {
     return {
       success: false,
@@ -591,9 +678,9 @@ function updateCfaLearningFeedback(
   }
 
   const user = resolveCfaUser(userId);
-  const sheet = _getCfaSpreadsheet().getSheetByName(tabName);
+  const sheet = _getCfaSpreadsheet().getSheetByName(resolvedTab);
   if (!sheet) {
-    return { success: false, user, record, message: `找不到試算表分頁 ${tabName}` };
+    return { success: false, user, record, message: `找不到試算表分頁 ${resolvedTab}` };
   }
 
   // Nuo: Col 8 (Learned)
@@ -637,13 +724,15 @@ function updateCfaModuleLearningProgress(
     return { success: false, user, message: `找不到進度表 ${USER_LEARNING_PROGRESS_TAB}` };
   }
 
+  const volCode = `v${vol < 10 ? '0' + vol : vol}`;
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
-  const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
-  const col = user === 'Niu' ? 5 : 6;
+  const rawRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  const col = user === 'Niu' ? 8 : 9;
 
   for (let i = 0; i < rawRows.length; i++) {
+    const rowVol = String(rawRows[i][0] || '').trim().toLowerCase();
     const rowMod = String(rawRows[i][2] || '').trim().toLowerCase();
-    if (rowMod === modCode) {
+    if (rowVol === volCode && rowMod === modCode) {
       const rowIndex = i + 2;
       sheet.getRange(rowIndex, col).setValue(isLearned ? 'TRUE' : '');
       return {
@@ -760,9 +849,10 @@ function _buildCfaModuleCompletedFlexCard(
  */
 function _buildCfaModuleSummaryActionCard(vol: number, mod: number): object {
   const nextMod = mod + 1;
+  const volCode = `v${vol < 10 ? '0' + vol : vol}`;
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
   const allLearningModules = loadUserLearningModules();
-  const lm = allLearningModules.find(m => m.module.toLowerCase() === modCode);
+  const lm = allLearningModules.find(m => m.volume.toLowerCase() === volCode && m.module.toLowerCase() === modCode);
   const moduleName = lm ? lm.moduleName : 'Rates and Returns';
 
   return {
@@ -842,16 +932,19 @@ function _buildCfaModuleSummaryActionCard(vol: number, mod: number): object {
 /**
  * Returns all learned modules that still have unlearned questions (learnedCount < totalCount).
  */
-function getIncompleteLearnedModules(user: CfaUser, tabName: string = DEFAULT_CFA_TAB): UserLearningModule[] {
+function getIncompleteLearnedModules(user: CfaUser): UserLearningModule[] {
   const allLearningModules = loadUserLearningModules();
   const learnedModules = allLearningModules.filter(m => (user === 'Niu' ? m.isNiuLearned : m.isNuoLearned));
-  const allQuestions = loadCfaQuestionsFromSheet(tabName);
 
   return learnedModules.filter(lm => {
+    const totalCount = lm.numberOfExamples + lm.numberOfProblems;
+    if (totalCount === 0) return false;
+
+    const volNum = parseInt(lm.volume.replace(/\D/g, ''), 10) || 1;
+    const tabName = getCfaVolumeTab(volNum);
+    const allQuestions = loadCfaQuestionsFromSheet(tabName);
     const modCode = lm.module.toLowerCase();
     const modQuestions = allQuestions.filter(q => q.module.toLowerCase() === modCode);
-    const totalCount = modQuestions.length;
-    if (totalCount === 0) return false;
     const learnedCount = modQuestions.filter(q => (user === 'Niu' ? q.niuLearned : q.nuoLearned) > 0).length;
     return learnedCount < totalCount;
   });
@@ -1191,9 +1284,10 @@ function getCfaUserProgressReport(userId?: string): object {
 /**
  * Fetches the textbook summary markdown for a given Volume and Module from CFA Module Summary sheet.
  */
-function fetchCfaModuleSummary(vol: number, mod: number, tabName: string = DEFAULT_CFA_TAB): string | null {
+function fetchCfaModuleSummary(vol: number, mod: number, tabName?: string): string | null {
   try {
-    const sheet = _getCfaSummarySpreadsheet().getSheetByName(tabName);
+    const resolvedTab = tabName || getCfaVolumeTab(vol);
+    const sheet = _getCfaSummarySpreadsheet().getSheetByName(resolvedTab);
     if (!sheet || sheet.getLastRow() <= 1) return null;
 
     const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();

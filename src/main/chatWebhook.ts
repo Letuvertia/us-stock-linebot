@@ -93,13 +93,13 @@ function _executeSingleCommand(
 
     if (mode === 'drill') {
       // In drill mode, always fetch next question randomly across all answered questions in learned modules
-      const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, DEFAULT_CFA_TAB, 'drill');
+      const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, undefined, 'drill');
       if (nextQ) {
         outMessages.push(nextQ.flexMessage);
       }
     } else if (mode === 'review') {
       // In review mode, continuously fetch next question from the SAME module without celebration card
-      const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'review');
+      const nextQ = fetchNextCfaQuestion(userId, vol, mod, undefined, 'review');
       if (nextQ) {
         outMessages.push(nextQ.flexMessage);
       }
@@ -110,7 +110,7 @@ function _executeSingleCommand(
         outMessages.push(completedCard);
       } else {
         // Automatically fetch next question from the SAME module in learn mode
-        const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'learn');
+        const nextQ = fetchNextCfaQuestion(userId, vol, mod, undefined, 'learn');
         if (nextQ) {
           outMessages.push(nextQ.flexMessage);
         }
@@ -206,7 +206,7 @@ function _executeSingleCommand(
   // 5. CFA Drill Mode Request: "皮皮 CFA 刷題模式" or "皮皮 CFA 刷題"
   if (/^CFA\s*(?:刷題模式|刷題)/i.test(text)) {
     logInfo(fnName, 'CFA drill mode request');
-    const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, DEFAULT_CFA_TAB, 'drill');
+    const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, undefined, 'drill');
     if (nextQ) {
       outMessages.push(nextQ.flexMessage);
     } else {
@@ -254,7 +254,7 @@ function _executeSingleCommand(
     const isReview = /複習/i.test(text);
     const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
     logInfo(fnName, `CFA question request match: vol=${vol} mod=${mod}, mode=${mode}`);
-    const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, mode);
+    const nextQ = fetchNextCfaQuestion(userId, vol, mod, undefined, mode);
     if (nextQ) {
       outMessages.push(nextQ.flexMessage);
     } else {
