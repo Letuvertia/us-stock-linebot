@@ -227,20 +227,21 @@ function recordCfaQuestionAttempt(
 /**
  * Returns mode tag string for button text suffixes.
  */
-function _modeToTag(mode: CfaQuizMode): string {
-  if (mode === 'drill') return ' 刷題模式';
-  if (mode === 'review') return ' 複習模式';
-  return ' 學習模式';
+function _modeToTag(mode: CfaQuizMode, onlyProblems: boolean = false): string {
+  const probSuffix = onlyProblems ? ' 僅題目' : '';
+  if (mode === 'drill') return ` 刷題模式${probSuffix}`;
+  if (mode === 'review') return ` 複習模式${probSuffix}`;
+  return ` 學習模式${probSuffix}`;
 }
 
 /**
  * Injects mode suffix into question button action texts so session mode persists.
  */
-function _injectQuizModeIntoQuestionFlex(flexMessage: any, mode: CfaQuizMode): any {
+function _injectQuizModeIntoQuestionFlex(flexMessage: any, mode: CfaQuizMode, onlyProblems: boolean = false): any {
   const jsonStr = JSON.stringify(flexMessage);
-  const tag = _modeToTag(mode);
+  const tag = _modeToTag(mode, onlyProblems);
   const updatedStr = jsonStr.replace(
-    /("text":\s*"皮皮 CFA (?:回答|解析)[^"]*?)(?:\s*(?:刷題模式|複習模式|學習模式))?(")/g,
+    /("text":\s*"皮皮 CFA (?:回答|解析)[^"]*?)(?:\s*(?:刷題模式|複習模式|學習模式))?(?:\s*僅題目)?(")/g,
     `$1${tag}$2`
   );
   try {
@@ -253,11 +254,11 @@ function _injectQuizModeIntoQuestionFlex(flexMessage: any, mode: CfaQuizMode): a
 /**
  * Injects mode suffix into solution feedback button action texts.
  */
-function _injectQuizModeIntoSolutionFlex(flexMessage: any, mode: CfaQuizMode): any {
+function _injectQuizModeIntoSolutionFlex(flexMessage: any, mode: CfaQuizMode, onlyProblems: boolean = false): any {
   const jsonStr = JSON.stringify(flexMessage);
-  const tag = _modeToTag(mode);
+  const tag = _modeToTag(mode, onlyProblems);
   const updatedStr = jsonStr.replace(
-    /("text":\s*"皮皮 CFA 學習狀態回報[^"]*?)(?:\s*(?:刷題模式|複習模式|學習模式))?(")/g,
+    /("text":\s*"皮皮 CFA 學習狀態回報[^"]*?)(?:\s*(?:刷題模式|複習模式|學習模式))?(?:\s*僅題目)?(")/g,
     `$1${tag}$2`
   );
   try {
@@ -280,10 +281,12 @@ function fetchNextCfaQuestion(
   userId?: string,
   targetVol?: number,
   targetMod?: number,
-  tabName: string = DEFAULT_CFA_TAB,
-  mode: CfaQuizMode = 'learn'
+  tabName?: string,
+  mode: CfaQuizMode = 'learn',
+  onlyProblems: boolean = false
 ): { record: CfaQuestionRecord; flexMessage: object } | null {
-  const allRecords = loadCfaQuestionsFromSheet(tabName);
+  const actualTab = tabName || (targetVol ? getCfaVolumeTab(targetVol) : DEFAULT_CFA_TAB);
+  const allRecords = loadCfaQuestionsFromSheet(actualTab);
   if (allRecords.length === 0) return null;
 
   const user = resolveCfaUser(userId);
@@ -298,6 +301,10 @@ function fetchNextCfaQuestion(
       return null;
     }
     candidateRecords = allRecords.filter(r => learnedModules.includes(r.module.toLowerCase()));
+  }
+
+  if (onlyProblems) {
+    candidateRecords = candidateRecords.filter(r => /^problem$/i.test(r.type.trim()));
   }
 
   if (candidateRecords.length === 0) {
@@ -373,13 +380,16 @@ function fetchNextCfaQuestion(
       selected = unseen[0];
     } else {
       // 2. Filter for remaining unlearned questions (Learned = 0)
+      // Practice problems determine completion; examples are for reference
+      const hasProblems = candidateRecords.some(r => /^problem$/i.test(r.type.trim()));
       const unlearned = candidateRecords.filter(r => {
+        if (hasProblems && !/^problem$/i.test(r.type.trim())) return false;
         const lrn = user === 'Niu' ? r.niuLearned : r.nuoLearned;
         return lrn === 0;
       });
 
       if (unlearned.length === 0) {
-        // All questions in this module are already learned! (Learning mode completes)
+        // All practice problems in this module are already learned! (Learning mode completes)
         return null;
       }
 
@@ -401,7 +411,7 @@ function fetchNextCfaQuestion(
 
   try {
     let flexMessage = JSON.parse(selected.questionJson);
-    flexMessage = _injectQuizModeIntoQuestionFlex(flexMessage, mode);
+    flexMessage = _injectQuizModeIntoQuestionFlex(flexMessage, mode, onlyProblems);
     return { record: selected, flexMessage };
   } catch (err) {
     logError('fetchNextCfaQuestion', `Failed to parse question JSON: ${err}`);
@@ -444,7 +454,8 @@ function handleCfaAnswerSubmission(
   chosenOption: string,
   userId?: string,
   mode: CfaQuizMode = 'learn',
-  tabName: string = DEFAULT_CFA_TAB
+  tabName: string = DEFAULT_CFA_TAB,
+  onlyProblems: boolean = false
 ): { isCorrect: boolean; flexMessage: object } | null {
   const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
   if (!record || !record.solutionJson) return null;
@@ -487,7 +498,7 @@ function handleCfaAnswerSubmission(
       bubble.body.contents.unshift(bannerBox, { type: 'separator', margin: 'md' });
     }
 
-    flexMessage = _injectQuizModeIntoSolutionFlex(flexMessage, mode);
+    flexMessage = _injectQuizModeIntoSolutionFlex(flexMessage, mode, onlyProblems);
 
     return { isCorrect, flexMessage };
   } catch (err) {
@@ -507,7 +518,8 @@ function fetchCfaSolutionByRef(
   num: number,
   userId?: string,
   mode: CfaQuizMode = 'learn',
-  tabName: string = DEFAULT_CFA_TAB
+  tabName: string = DEFAULT_CFA_TAB,
+  onlyProblems: boolean = false
 ): object | null {
   const record = findCfaQuestionByRef(vol, mod, typeCode, num, tabName);
   if (!record || !record.solutionJson) return null;
@@ -518,7 +530,7 @@ function fetchCfaSolutionByRef(
 
   try {
     let flexMessage = JSON.parse(record.solutionJson);
-    flexMessage = _injectQuizModeIntoSolutionFlex(flexMessage, mode);
+    flexMessage = _injectQuizModeIntoSolutionFlex(flexMessage, mode, onlyProblems);
     return flexMessage;
   } catch (err) {
     logError('fetchCfaSolutionByRef', `Failed to parse solution JSON: ${err}`);
@@ -539,7 +551,7 @@ const CFA_FEEDBACK_HEADERS = [
 
 /**
  * Builds the cumulative progress text lines for learned modules (e.g. "🚀 V1 / LM1 - Rates and Returns: 24/28").
- * Uses rocket emoji at the front for in-progress modules, and checkmark at the front for completed modules.
+ * Uses rocket emoji at the front for in-progress modules, and checkmark at the front for completed modules (finishing all practice problems).
  */
 function _buildCumulativeProgressLines(user: CfaUser): string[] {
   const allLearningModules = loadUserLearningModules();
@@ -551,11 +563,13 @@ function _buildCumulativeProgressLines(user: CfaUser): string[] {
     const modNum = parseInt(lm.module.replace(/\D/g, ''), 10) || 1;
     const tabName = getCfaVolumeTab(volNum);
     const modQuestions = loadCfaQuestionsFromSheet(tabName).filter(q => q.module.toLowerCase() === lm.module.toLowerCase());
-    const totalCount = modQuestions.length;
+    const problemQuestions = modQuestions.filter(q => /^problem$/i.test(q.type.trim()));
+    const targetQuestions = problemQuestions.length > 0 ? problemQuestions : modQuestions;
+    const totalCount = targetQuestions.length;
 
     if (totalCount === 0) continue;
 
-    const learnedCount = modQuestions.filter(q => {
+    const learnedCount = targetQuestions.filter(q => {
       const lrn = user === 'Niu' ? q.niuLearned : q.nuoLearned;
       return lrn > 0;
     }).length;
@@ -574,7 +588,7 @@ function _buildCumulativeProgressLines(user: CfaUser): string[] {
 }
 
 /**
- * Checks if all questions in the specified module have been learned by the user (learned > 0).
+ * Checks if all practice problems in the specified module have been learned by the user (learned > 0).
  */
 function checkIsModuleCompleted(
   user: CfaUser,
@@ -586,10 +600,12 @@ function checkIsModuleCompleted(
   const allQuestions = loadCfaQuestionsFromSheet(actualTab);
   const modCode = `m${mod < 10 ? '0' + mod : mod}`;
   const modQuestions = allQuestions.filter(q => q.module.toLowerCase() === modCode);
-  const totalCount = modQuestions.length;
+  const problemQuestions = modQuestions.filter(q => /^problem$/i.test(q.type.trim()));
+  const targetQuestions = problemQuestions.length > 0 ? problemQuestions : modQuestions;
+  const totalCount = targetQuestions.length;
   if (totalCount === 0) return false;
 
-  const learnedCount = modQuestions.filter(q => {
+  const learnedCount = targetQuestions.filter(q => {
     const lrn = user === 'Niu' ? q.niuLearned : q.nuoLearned;
     return lrn > 0;
   }).length;
@@ -876,7 +892,7 @@ function _buildCfaModuleSummaryActionCard(vol: number, mod: number): object {
 type CfaModuleStatus = 'completed' | 'in_progress' | 'not_started';
 
 /**
- * Determines completion / learning status of a CFA module for a user.
+ * Determines completion / learning status of a CFA module for a user (completed when all practice problems are finished).
  */
 function _getCfaModuleStatus(
   user: CfaUser,
@@ -888,17 +904,20 @@ function _getCfaModuleStatus(
   const questions = volQuestions || loadCfaQuestionsFromSheet(tabName);
   const modCode = lm.module.toLowerCase();
   const modQuestions = questions.filter(q => q.module.toLowerCase() === modCode);
-  const totalCount = modQuestions.length;
+  const problemQuestions = modQuestions.filter(q => /^problem$/i.test(q.type.trim()));
+  const targetQuestions = problemQuestions.length > 0 ? problemQuestions : modQuestions;
+  const totalCount = targetQuestions.length;
 
   const isMarkedLearned = user === 'Niu' ? lm.isNiuLearned : lm.isNuoLearned;
 
   if (totalCount > 0) {
-    const learnedCount = modQuestions.filter(q => (user === 'Niu' ? q.niuLearned : q.nuoLearned) > 0).length;
+    const learnedCount = targetQuestions.filter(q => (user === 'Niu' ? q.niuLearned : q.nuoLearned) > 0).length;
     if (learnedCount >= totalCount) {
       return 'completed';
     }
     const answeredCount = modQuestions.filter(q => (user === 'Niu' ? q.niuAnswered : q.nuoAnswered) > 0).length;
-    if (isMarkedLearned || answeredCount > 0 || learnedCount > 0) {
+    const anyLearnedCount = modQuestions.filter(q => (user === 'Niu' ? q.niuLearned : q.nuoLearned) > 0).length;
+    if (isMarkedLearned || answeredCount > 0 || anyLearnedCount > 0) {
       return 'in_progress';
     }
     return 'not_started';
@@ -1132,13 +1151,7 @@ function buildCfaModuleSelectorForVolumeFlexCard(
     if (type === 'summary') {
       cmdText = `皮皮 CFA 摘要 V${volNum} M${modNum}`;
     } else {
-      if (modStatus === 'not_started') {
-        cmdText = `皮皮 CFA 題目選單 V${volNum} M${modNum} 確認`;
-      } else if (modStatus === 'completed') {
-        cmdText = `皮皮 CFA 題目 V${volNum} M${modNum} 複習模式`;
-      } else {
-        cmdText = `皮皮 CFA 題目 V${volNum} M${modNum} 學習模式`;
-      }
+      cmdText = `皮皮 CFA 題目選單 V${volNum} M${modNum} 確認`;
     }
 
     const rawLabel = `${emoji} LM${modNum}: ${lm.moduleName}`;
@@ -1185,12 +1198,16 @@ function buildCfaModuleSelectorForVolumeFlexCard(
 }
 
 /**
- * Builds the confirmation card when user chooses an unlearned module directly in quiz mode.
+ * Builds the confirmation card when user chooses a module in quiz mode.
+ * - For unlearned modules: shows explanatory message and 3 buttons (先看摘要, 直接寫範例+題目, 跳過範例直接寫題目).
+ * - For learned modules: has no text body and 2 buttons (直接寫範例+題目, 跳過範例直接寫題目).
  */
-function buildCfaUnlearnedModuleConfirmFlexCard(
+function buildCfaModuleQuizConfirmFlexCard(
+  userId: string | undefined,
   volNum: number,
   modNum: number
 ): object {
+  const user = resolveCfaUser(userId);
   const volCode = `v${volNum < 10 ? '0' + volNum : volNum}`;
   const modCode = `m${modNum < 10 ? '0' + modNum : modNum}`;
   const allLearningModules = loadUserLearningModules();
@@ -1198,7 +1215,100 @@ function buildCfaUnlearnedModuleConfirmFlexCard(
   const moduleName = lm ? lm.moduleName : `LM${modNum}`;
   const volName = lm ? lm.volumeName : `Volume ${volNum}`;
 
+  const tabName = getCfaVolumeTab(volNum);
+  const volQuestions = loadCfaQuestionsFromSheet(tabName);
+  const modStatus = lm ? _getCfaModuleStatus(user, lm, volQuestions) : 'not_started';
+  const isUnlearned = modStatus === 'not_started';
+
   const altText = `📖 CFA LEVEL 1 · VOL ${volNum} · LM${modNum} ${moduleName}`;
+
+  if (isUnlearned) {
+    return {
+      type: 'flex',
+      altText,
+      contents: {
+        type: 'bubble',
+        size: 'mega',
+        header: {
+          type: 'box',
+          layout: 'vertical',
+          backgroundColor: '#0D2538',
+          paddingAll: 'lg',
+          contents: [
+            {
+              type: 'text',
+              text: `📖 CFA LEVEL 1 · VOL ${volNum} · ${volName}`,
+              weight: 'bold',
+              color: '#00C853',
+              size: 'xs',
+            },
+            {
+              type: 'text',
+              text: `LM${modNum}: ${moduleName}`,
+              weight: 'bold',
+              color: '#FFFFFF',
+              size: 'md',
+              margin: 'xs',
+              wrap: true,
+            },
+          ],
+        },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          paddingAll: 'lg',
+          spacing: 'md',
+          contents: [
+            {
+              type: 'text',
+              text: 'You have not reviewed the key concepts summary for this module yet. Would you like to read the summary first or proceed directly to practice questions?',
+              size: 'sm',
+              color: '#333333',
+              wrap: true,
+            },
+            {
+              type: 'separator',
+              margin: 'lg',
+            },
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#0D2538',
+              height: 'sm',
+              action: {
+                type: 'message',
+                label: '先看摘要',
+                text: `皮皮 CFA 摘要 V${volNum} M${modNum}`,
+              },
+            },
+            {
+              type: 'button',
+              style: 'secondary',
+              height: 'sm',
+              action: {
+                type: 'message',
+                label: '我會了，直接寫範例+題目',
+                text: `皮皮 CFA 學習狀態回報 V${volNum} M${modNum} && 皮皮 CFA 題目 V${volNum} M${modNum} 學習模式`,
+              },
+            },
+            {
+              type: 'button',
+              style: 'secondary',
+              height: 'sm',
+              action: {
+                type: 'message',
+                label: '我會了，跳過範例直接寫題目',
+                text: `皮皮 CFA 學習狀態回報 V${volNum} M${modNum} && 皮皮 CFA 題目 V${volNum} M${modNum} 學習模式 僅題目`,
+              },
+            },
+          ],
+        },
+      },
+    };
+  }
+
+  // Learned module (in progress or completed): no body text, just 2 buttons
+  const modeSuffix = modStatus === 'completed' ? '複習模式' : '學習模式';
 
   return {
     type: 'flex',
@@ -1234,19 +1344,8 @@ function buildCfaUnlearnedModuleConfirmFlexCard(
         type: 'box',
         layout: 'vertical',
         paddingAll: 'lg',
-        spacing: 'md',
+        spacing: 'sm',
         contents: [
-          {
-            type: 'text',
-            text: 'You have not reviewed the key concepts summary for this module yet. Would you like to read the summary first or proceed directly to practice questions?',
-            size: 'sm',
-            color: '#333333',
-            wrap: true,
-          },
-          {
-            type: 'separator',
-            margin: 'lg',
-          },
           {
             type: 'button',
             style: 'primary',
@@ -1254,8 +1353,8 @@ function buildCfaUnlearnedModuleConfirmFlexCard(
             height: 'sm',
             action: {
               type: 'message',
-              label: '先看摘要',
-              text: `皮皮 CFA 摘要 V${volNum} M${modNum}`,
+              label: '寫範例+題目',
+              text: `皮皮 CFA 題目 V${volNum} M${modNum} ${modeSuffix}`,
             },
           },
           {
@@ -1264,8 +1363,8 @@ function buildCfaUnlearnedModuleConfirmFlexCard(
             height: 'sm',
             action: {
               type: 'message',
-              label: '我會了，直接寫題目',
-              text: `皮皮 CFA 學習狀態回報 V${volNum} M${modNum} && 皮皮 CFA 題目 V${volNum} M${modNum} 學習模式`,
+              label: '直接寫題目',
+              text: `皮皮 CFA 題目 V${volNum} M${modNum} ${modeSuffix} 僅題目`,
             },
           },
         ],
@@ -1275,7 +1374,7 @@ function buildCfaUnlearnedModuleConfirmFlexCard(
 }
 
 /**
- * Returns all learned modules that still have unlearned questions (learnedCount < totalCount).
+ * Returns all learned modules that still have unlearned practice problems (learnedCount < totalCount).
  */
 function getIncompleteLearnedModules(user: CfaUser): UserLearningModule[] {
   const allLearningModules = loadUserLearningModules();
@@ -1286,9 +1385,11 @@ function getIncompleteLearnedModules(user: CfaUser): UserLearningModule[] {
     const tabName = getCfaVolumeTab(volNum);
     const modCode = lm.module.toLowerCase();
     const modQuestions = loadCfaQuestionsFromSheet(tabName).filter(q => q.module.toLowerCase() === modCode);
-    const totalCount = modQuestions.length;
+    const problemQuestions = modQuestions.filter(q => /^problem$/i.test(q.type.trim()));
+    const targetQuestions = problemQuestions.length > 0 ? problemQuestions : modQuestions;
+    const totalCount = targetQuestions.length;
     if (totalCount === 0) return false;
-    const learnedCount = modQuestions.filter(q => (user === 'Niu' ? q.niuLearned : q.nuoLearned) > 0).length;
+    const learnedCount = targetQuestions.filter(q => (user === 'Niu' ? q.niuLearned : q.nuoLearned) > 0).length;
     return learnedCount < totalCount;
   });
 }

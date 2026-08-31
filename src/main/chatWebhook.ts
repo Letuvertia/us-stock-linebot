@@ -86,31 +86,32 @@ function _executeSingleCommand(
     const isDrill = /刷題/i.test(text);
     const isReview = /複習/i.test(text);
     const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
+    const onlyProblems = /僅題目|跳過範例/i.test(text);
 
-    logInfo(fnName, `CFA question feedback match: V${vol} M${mod} ${typeCode}${num} (${qFeedbackMatch[5]}), mode=${mode}`);
+    logInfo(fnName, `CFA question feedback match: V${vol} M${mod} ${typeCode}${num} (${qFeedbackMatch[5]}), mode=${mode}, onlyProblems=${onlyProblems}`);
     const res = updateCfaLearningFeedback(vol, mod, typeCode, num, isKnown, userId);
     outMessages.push({ type: 'text', text: res.message });
 
     if (mode === 'drill') {
       // In drill mode, always fetch next question randomly across all answered questions in learned modules
-      const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, DEFAULT_CFA_TAB, 'drill');
+      const nextQ = fetchNextCfaQuestion(userId, undefined, undefined, DEFAULT_CFA_TAB, 'drill', onlyProblems);
       if (nextQ) {
         outMessages.push(nextQ.flexMessage);
       }
     } else if (mode === 'review') {
       // In review mode, continuously fetch next question from the SAME module without celebration card
-      const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'review');
+      const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'review', onlyProblems);
       if (nextQ) {
         outMessages.push(nextQ.flexMessage);
       }
     } else {
-      // In learn mode, if all questions in this module are completed by user, celebrate!
+      // In learn mode, if all practice problems in this module are completed by user, celebrate!
       if (checkIsModuleCompleted(res.user, vol, mod)) {
         const completedCard = _buildCfaModuleCompletedFlexCard(res.user, vol, mod, res.record.moduleName);
         outMessages.push(completedCard);
       } else {
         // Automatically fetch next question from the SAME module in learn mode
-        const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'learn');
+        const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, 'learn', onlyProblems);
         if (nextQ) {
           outMessages.push(nextQ.flexMessage);
         }
@@ -147,8 +148,9 @@ function _executeSingleCommand(
     const isDrill = /刷題/i.test(text);
     const isReview = /複習/i.test(text);
     const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
-    logInfo(fnName, `CFA explanation match: V${vol} M${mod} ${typeCode}${num}, mode=${mode}`);
-    const solutionFlex = fetchCfaSolutionByRef(vol, mod, typeCode, num, userId, mode);
+    const onlyProblems = /僅題目|跳過範例/i.test(text);
+    logInfo(fnName, `CFA explanation match: V${vol} M${mod} ${typeCode}${num}, mode=${mode}, onlyProblems=${onlyProblems}`);
+    const solutionFlex = fetchCfaSolutionByRef(vol, mod, typeCode, num, userId, mode, DEFAULT_CFA_TAB, onlyProblems);
     if (solutionFlex) {
       outMessages.push(solutionFlex);
     } else {
@@ -173,8 +175,9 @@ function _executeSingleCommand(
     const isDrill = /刷題/i.test(text);
     const isReview = /複習/i.test(text);
     const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
-    logInfo(fnName, `CFA answer match: V${vol} M${mod} ${typeCode}${num} -> ${chosen}, mode=${mode}`);
-    const res = handleCfaAnswerSubmission(vol, mod, typeCode, num, chosen, userId, mode);
+    const onlyProblems = /僅題目|跳過範例/i.test(text);
+    logInfo(fnName, `CFA answer match: V${vol} M${mod} ${typeCode}${num} -> ${chosen}, mode=${mode}, onlyProblems=${onlyProblems}`);
+    const res = handleCfaAnswerSubmission(vol, mod, typeCode, num, chosen, userId, mode, DEFAULT_CFA_TAB, onlyProblems);
     if (res) {
       outMessages.push(res.flexMessage);
     } else {
@@ -207,13 +210,13 @@ function _executeSingleCommand(
     return;
   }
 
-  // C. Quiz unlearned module confirmation: "皮皮 CFA 題目選單 V1 M2 確認"
+  // C. Quiz module confirmation: "皮皮 CFA 題目選單 V1 M5 確認"
   const quizConfirmMatch = /^CFA\s*題目選單\s*V?(\d+)\s*M?(\d+)\s*確認/i.exec(text.trim());
   if (quizConfirmMatch) {
     const volNum = parseInt(quizConfirmMatch[1], 10);
     const modNum = parseInt(quizConfirmMatch[2], 10);
-    logInfo(fnName, `CFA unlearned module quiz confirm: V${volNum} M${modNum}`);
-    const selectorCard = buildCfaUnlearnedModuleConfirmFlexCard(volNum, modNum);
+    logInfo(fnName, `CFA module quiz confirm: V${volNum} M${modNum}`);
+    const selectorCard = buildCfaModuleQuizConfirmFlexCard(userId, volNum, modNum);
     outMessages.push(selectorCard);
     return;
   }
@@ -283,8 +286,9 @@ function _executeSingleCommand(
     const isDrill = /刷題/i.test(text);
     const isReview = /複習/i.test(text);
     const mode: CfaQuizMode = isDrill ? 'drill' : (isReview ? 'review' : 'learn');
-    logInfo(fnName, `CFA question request match: vol=${vol} mod=${mod}, mode=${mode}`);
-    const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, mode);
+    const onlyProblems = /僅題目|跳過範例/i.test(text);
+    logInfo(fnName, `CFA question request match: vol=${vol} mod=${mod}, mode=${mode}, onlyProblems=${onlyProblems}`);
+    const nextQ = fetchNextCfaQuestion(userId, vol, mod, DEFAULT_CFA_TAB, mode, onlyProblems);
     if (nextQ) {
       outMessages.push(nextQ.flexMessage);
     } else {
