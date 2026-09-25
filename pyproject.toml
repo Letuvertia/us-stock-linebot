@@ -1,0 +1,14 @@
+[project]
+name = "us-stock-linebot"
+version = "0.1.0"
+description = "Python collectors for the US Stock LINE Bot (market data, news, podcasts)"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.2.1",
+    "google-api-python-client>=2.200.0",
+    "google-auth>=2.58.1",
+    "googlenewsdecoder>=0.2.1",
+    "nodriver>=0.50.3",
+    "requests>=2.34.2",
+    "yfinance>=1.7.0",
+]

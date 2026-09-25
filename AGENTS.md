@@ -21,7 +21,9 @@ See [README.md](file:///home/letuvertia/us-stock-linebot/README.md) for full arc
 - **Strict Single-Commit Rule**: Each PR must end with **exactly one commit**. Squash iterations using `git cpf` (`git commit --amend --no-edit && git push --force-with-lease origin $(git rev-parse --abbrev-ref HEAD)`).
 
 ### Github Python Environment (`scripts/`)
-All secrets and credentials required by Python collector scripts (Google service accounts, spreadsheet IDs, and API keys) are already pre-configured both in GitHub Actions Secrets for scheduled workflows and locally in `.secrets/` and `.env` on this development machine. You can run collectors directly without extra virtual environment or credential setup.
+All secrets and credentials required by Python collector scripts (Google service accounts, spreadsheet IDs, and API keys) are already pre-configured both in GitHub Actions Secrets for scheduled workflows and locally in `.secrets/` and `.env` on this development machine.
+
+Dependencies are managed with [`uv`](https://docs.astral.sh/uv/) (`pyproject.toml` / `uv.lock`) — run collectors via `uv run scripts/<path>.py` instead of `python scripts/<path>.py`. `uv run` auto-syncs the project's `.venv/` from the lockfile, so no manual virtual environment setup is needed. GitHub Actions workflows use `astral-sh/setup-uv`; the local crontab invokes the absolute `uv` path (`~/.local/bin/uv run --project ~/us-stock-linebot ...`) since cron's `PATH` is minimal.
 
 ### Local Ollama / LLM (WSL2 to Windows Host)
 News and podcast summarization scripts run inside WSL2 and connect to Ollama on the Windows host directly at `http://localhost:11434` (enabled via WSL2 mirrored networking `networkingMode=mirrored`).

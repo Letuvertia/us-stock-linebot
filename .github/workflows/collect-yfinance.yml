@@ -13,12 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install google-auth google-api-python-client yfinance
+          enable-cache: true
 
       - name: Write service account credentials
         run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}' > /tmp/gsa.json
@@ -27,4 +25,4 @@ jobs:
         env:
           DATA_CREDS_FILE: /tmp/gsa.json
           US_STOCK_SPREADSHEET_ID: ${{ secrets.US_STOCK_SPREADSHEET_ID }}
-        run: python scripts/market_data/collect_yfinance.py
+        run: uv run scripts/market_data/collect_yfinance.py
