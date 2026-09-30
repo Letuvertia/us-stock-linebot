@@ -70,6 +70,188 @@ function _normalizeTwTicker(ticker: string): string {
   return trimmed;
 }
 
+// ── Taiwan & US Fee, Tax & Lot Tracking ─────────────────────────────────────
+
+interface HoldingLot {
+  shares: number;
+  price: number;
+  cost: number;
+}
+
+/**
+ * 判斷台股標的是否為 ETF / ETN（享有 0.1% 優惠證交稅率）
+ * 規則：凡台股代號以 00 或 02 開頭者皆為 ETF / ETN
+ */
+function _isTwEtf(ticker: string): boolean {
+  const norm = _normalizeTwTicker(ticker);
+  return /^00|^02/.test(norm);
+}
+
+/**
+ * 取得台股賣出證券交易稅率 (ETF/ETN 0.1%, 一般個股 0.3%)
+ */
+function _twTaxRate(ticker: string): number {
+  return _isTwEtf(ticker) ? 0.001 : 0.003;
+}
+
+interface TwPositionResult {
+  grossAsset: number;
+  netAsset: number;
+  totalFee: number;
+  totalTax: number;
+  netPL: number;
+  netRoi: number;
+  buyPriceAvg: number;
+}
+
+/**
+ * 計算台股賣出淨現值與損益（扣除國泰證券 2.8 折手續費 0.0399% 與證交稅，支援分批買進批次試算）
+ */
+function _calculateTwPosition(
+  ticker: string,
+  totalShares: number,
+  price: number,
+  totalCost: number,
+  fallbackAvgCost: number,
+  openLots?: HoldingLot[]
+): TwPositionResult {
+  const taxRate = _twTaxRate(ticker);
+  const lotsShares = (openLots ?? []).reduce((sum, l) => sum + l.shares, 0);
+  const useLots = openLots && openLots.length > 0 && Math.abs(lotsShares - totalShares) < 0.0001;
+
+  if (useLots) {
+    let grossAsset = 0;
+    let totalFee = 0;
+    let totalTax = 0;
+    let netPL = 0;
+    let totalTradeAmt = 0;
+    for (const lot of openLots) {
+      const lotGross = Math.round(lot.shares * price * 100) / 100;
+      const lotFee = Math.max(1, Math.floor(lotGross * 0.001425 * 0.28));
+      const lotTax = Math.floor(lotGross * taxRate);
+      const lotNet = lotGross - lotFee - lotTax;
+      grossAsset += lotGross;
+      totalFee += lotFee;
+      totalTax += lotTax;
+      netPL += (lotNet - lot.cost);
+      totalTradeAmt += (lot.shares * lot.price);
+    }
+    const netAsset = grossAsset - totalFee - totalTax;
+    const netRoi = totalCost > 0 ? (netPL / totalCost) : 0;
+    const buyPriceAvg = totalShares > 0 ? totalTradeAmt / totalShares : fallbackAvgCost;
+    return { grossAsset, netAsset, totalFee, totalTax, netPL: Math.round(netPL), netRoi, buyPriceAvg };
+  } else {
+    const grossAsset = Math.round(totalShares * price * 100) / 100;
+    const totalFee = Math.max(1, Math.floor(grossAsset * 0.001425 * 0.28));
+    const totalTax = Math.floor(grossAsset * taxRate);
+    const netAsset = grossAsset - totalFee - totalTax;
+    const netPL = Math.round(netAsset - totalCost);
+    const netRoi = totalCost > 0 ? (netPL / totalCost) : 0;
+    return { grossAsset, netAsset, totalFee, totalTax, netPL, netRoi, buyPriceAvg: fallbackAvgCost };
+  }
+}
+
+interface UsPositionResult {
+  grossAsset: number;
+  netAsset: number;
+  totalFee: number;
+  secFee: number;
+  netPL: number;
+  netRoi: number;
+  buyPriceAvg: number;
+}
+
+/**
+ * 計算美股賣出淨現值與損益（扣除國泰複委託 0.08% 手續費與 SEC 規費 0.00278%）
+ */
+function _calculateUsPosition(
+  ticker: string,
+  totalShares: number,
+  price: number,
+  totalCost: number,
+  fallbackAvgCost: number,
+  openLots?: HoldingLot[]
+): UsPositionResult {
+  const lotsShares = (openLots ?? []).reduce((sum, l) => sum + l.shares, 0);
+  const useLots = openLots && openLots.length > 0 && Math.abs(lotsShares - totalShares) < 0.0001;
+
+  const grossAsset = Math.round(totalShares * price * 100) / 100;
+  const totalFee = Math.round(grossAsset * 0.0008 * 100) / 100;
+  const secFee = Math.round(grossAsset * 0.0000278 * 100) / 100;
+  const netAsset = Math.round((grossAsset - totalFee - secFee) * 100) / 100;
+  const netPL = Math.round((netAsset - totalCost) * 100) / 100;
+  const netRoi = totalCost > 0 ? (netPL / totalCost) : 0;
+
+  let buyPriceAvg = fallbackAvgCost;
+  if (useLots && openLots) {
+    const totalTradeAmt = openLots.reduce((sum, l) => sum + l.shares * l.price, 0);
+    buyPriceAvg = totalShares > 0 ? totalTradeAmt / totalShares : fallbackAvgCost;
+  }
+
+  return { grossAsset, netAsset, totalFee, secFee, netPL, netRoi, buyPriceAvg };
+}
+
+function _loadHoldingLots(): Map<string, HoldingLot[]> {
+  const lotsMap = new Map<string, HoldingLot[]>();
+  try {
+    const ss = SpreadsheetApp.openById(getScriptProperty(PROP_KEYS.USER_CONFIG_SPREADSHEET_ID));
+    const sheet = ss.getSheetByName('UserHoldingTransactions');
+    if (!sheet) return lotsMap;
+    const rows = sheet.getDataRange().getValues() as string[][];
+    if (rows.length < 2) return lotsMap;
+
+    const header = rows[0];
+    const col = (name: string) => header.indexOf(name);
+    const colEx = col('Exchange');
+    const colTicker = col('Ticker');
+    const colAction = col('Action');
+    const colShares = col('Shares');
+    const colPrice = col('Price');
+    const colNetAmount = col('NetAmount');
+
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const ex = String(r[colEx] ?? '').trim().toUpperCase();
+      const isTw = ex === 'TW' || ex === 'TWO';
+      const isUs = ex === 'US';
+      if (!isTw && !isUs) continue;
+
+      const rawTicker = String(r[colTicker] ?? '').trim();
+      if (!rawTicker) continue;
+      const ticker = isTw ? _normalizeTwTicker(rawTicker) : rawTicker;
+      const action = String(r[colAction] ?? '').trim();
+      const shares = parseFloat(String(r[colShares] ?? '0')) || 0;
+      const price = parseFloat(String(r[colPrice] ?? '0')) || 0;
+      const netAmount = Math.abs(parseFloat(String(r[colNetAmount] ?? '0')) || 0);
+
+      if (!lotsMap.has(ticker)) {
+        lotsMap.set(ticker, []);
+      }
+      const lots = lotsMap.get(ticker)!;
+
+      if (action === '買進') {
+        lots.push({ shares, price, cost: netAmount });
+      } else if (action === '賣出') {
+        let rem = shares;
+        while (rem > 0 && lots.length > 0) {
+          if (lots[0].shares <= rem) {
+            rem -= lots[0].shares;
+            lots.shift();
+          } else {
+            const ratio = rem / lots[0].shares;
+            lots[0].shares -= rem;
+            lots[0].cost -= lots[0].cost * ratio;
+            rem = 0;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    logWarn('_loadHoldingLots', `Failed to load transaction lots: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return lotsMap;
+}
+
 // ── Loan interest ────────────────────────────────────────────────────────────
 
 function _loanAccruedInterest(loanDate: string, principal: number, annualRate: number): number {
@@ -173,6 +355,7 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
   }
 
   const rows = _loadHoldings();
+  const holdingLotsMap = _loadHoldingLots();
   const usdNtd = _fetchUsdNtd();
   const now = Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd HH:mm');
 
@@ -233,37 +416,45 @@ function executePortfolioReport(label?: string, replyToken?: string): void {
       }
 
       if (fetchSuccess && price > 0) {
-        const localAsset = Math.round(row.shares * price * 100) / 100;
-        const ntdAsset = isTw ? localAsset : Math.round(localAsset * usdNtd * 100) / 100;
-        const roi = row.avgCost > 0 ? Math.round((price / row.avgCost - 1) * 1000000) / 1000000 : 0;
-        stockNtd += ntdAsset;
-
-        updates.push({ range: `H${r}:K${r}`, values: [[price, roi, localAsset, ntdAsset]] });
-
         const absChange = Math.abs(change);
         const absChangePct = Math.abs(changePct);
         const changeEmoji = change >= 0 ? '📈' : '📉';
         const changeSign = change >= 0 ? '+' : '-';
 
         if (isTw) {
-          const pl = Math.round(localAsset - row.totalCost);
-          const plPct = row.totalCost > 0 ? pl / row.totalCost * 100 : 0;
-          const plSign = pl >= 0 ? '+' : '-';
+          const twRes = _calculateTwPosition(ticker, row.shares, price, row.totalCost, row.avgCost, holdingLotsMap.get(ticker));
+          stockNtd += twRes.netAsset;
+
+          updates.push({
+            range: `H${r}:K${r}`,
+            values: [[price, Math.round(twRes.netRoi * 1000000) / 1000000, twRes.netAsset, twRes.netAsset]],
+          });
+
+          const plSign = twRes.netPL >= 0 ? '+' : '-';
+          const plPct = Math.abs(twRes.netRoi * 100);
           twBlocks.push([
             `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
-            `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 0)}`,
-            `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 0)}`,
-            `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 0)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
+            `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(twRes.netAsset, 0)}`,
+            `   成本 ${_fmtNum(twRes.buyPriceAvg, 2)} / ${_fmtNum(row.totalCost, 0)}`,
+            `   總損益 ${plSign}${_fmtNum(Math.abs(twRes.netPL), 0)} (${plSign}${plPct.toFixed(2)}%)`,
           ]);
         } else {
-          const pl = Math.round((localAsset - row.totalCost) * 100) / 100;
-          const plPct = row.totalCost > 0 ? pl / row.totalCost * 100 : 0;
-          const plSign = pl >= 0 ? '+' : '-';
+          const usRes = _calculateUsPosition(ticker, row.shares, price, row.totalCost, row.avgCost, holdingLotsMap.get(ticker));
+          const ntdAsset = Math.round(usRes.netAsset * usdNtd * 100) / 100;
+          stockNtd += ntdAsset;
+
+          updates.push({
+            range: `H${r}:K${r}`,
+            values: [[price, Math.round(usRes.netRoi * 1000000) / 1000000, usRes.netAsset, ntdAsset]],
+          });
+
+          const plSign = usRes.netPL >= 0 ? '+' : '-';
+          const plPct = Math.abs(usRes.netRoi * 100);
           usBlocks.push([
             `▸ ${row.name} | ${changeEmoji}${changeSign}${_fmtNum(absChange, 2)} (${absChangePct.toFixed(2)}%)`,
-            `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(localAsset, 2)}`,
-            `   成本 ${_fmtNum(row.avgCost, 2)} / ${_fmtNum(row.totalCost, 2)}`,
-            `   總損益 ${plSign}${_fmtNum(Math.abs(pl), 2)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
+            `   市價 ${_fmtNum(price, 2)} / ${_fmtNum(usRes.netAsset, 2)}`,
+            `   成本 ${_fmtNum(usRes.buyPriceAvg, 2)} / ${_fmtNum(row.totalCost, 2)}`,
+            `   總損益 ${plSign}${_fmtNum(Math.abs(usRes.netPL), 2)} (${plSign}${Math.abs(plPct).toFixed(2)}%)`,
           ]);
         }
       } else {
